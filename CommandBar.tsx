@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import React, { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { THEME } from './themeConstants';
 import { NavigationParseResult, parseNavigationRequest } from './parseNavigationRequest';
 import { useDebounce } from './useDebounce';
@@ -20,15 +20,19 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const debouncedInput = useDebounce(rawInput, 300);
   const latestRequestId = useRef(0);
+  const hasUserEditedInput = useRef(false);
 
-  function emitNavigationChange(nextValue: string, parsed: NavigationParseResult) {
-    onNavigationSubmit({
-      origin: parsed.origin ?? undefined,
-      destination: parsed.destination ?? undefined,
-      avoid_nodes: parsed.avoid_nodes,
-      rawQuery: nextValue.trim(),
-    });
-  }
+  const emitNavigationChange = useCallback(
+    (nextValue: string, parsed: NavigationParseResult) => {
+      onNavigationSubmit({
+        origin: parsed.origin ?? undefined,
+        destination: parsed.destination ?? undefined,
+        avoid_nodes: parsed.avoid_nodes,
+        rawQuery: nextValue.trim(),
+      });
+    },
+    [onNavigationSubmit]
+  );
 
   useEffect(() => {
     const trimmedValue = debouncedInput.trim();
@@ -38,12 +42,16 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
     if (!trimmedValue) {
       setIsLoading(false);
       setErrorMessage(null);
-      onNavigationSubmit({
-        origin: undefined,
-        destination: undefined,
-        avoid_nodes: [],
-        rawQuery: '',
-      });
+
+      if (hasUserEditedInput.current) {
+        onNavigationSubmit({
+          origin: undefined,
+          destination: undefined,
+          avoid_nodes: [],
+          rawQuery: '',
+        });
+      }
+
       return undefined;
     }
 
@@ -77,7 +85,7 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
     return () => {
       isActive = false;
     };
-  }, [debouncedInput, onNavigationSubmit]);
+  }, [debouncedInput, emitNavigationChange, onNavigationSubmit]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,10 +128,10 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
       className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,760px)] -translate-x-1/2"
     >
       <div
-        className="flex items-center gap-3 rounded-full border border-white/12 bg-white/5 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-xl"
+        className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur-xl"
         style={{ backdropFilter: 'blur(12px)' }}
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-white/85">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-white/80">
           AI
         </div>
 
@@ -131,13 +139,15 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
           value={rawInput}
           onChange={(event) => {
             const nextValue = event.target.value;
+            hasUserEditedInput.current = true;
             setRawInput(nextValue);
           }}
           type="text"
           spellCheck={false}
           autoComplete="off"
           autoCorrect="off"
-          placeholder="Ask for a route: from Library to Main_Gate, avoid Hostel_A"
+          aria-label="Navigation command"
+          placeholder="from Library to Main Gate, avoid Cafeteria"
           className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/40"
           style={{
             fontFamily: 'Inter var, Inter, ui-sans-serif, system-ui, sans-serif',
@@ -150,7 +160,7 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
 
         <button
           type="submit"
-          className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition-colors hover:bg-emerald-400/18 hover:text-white"
+          className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200 transition-colors hover:bg-emerald-400/20 hover:text-white"
           disabled={isLoading}
           style={{
             color: THEME.primaryAccent,
@@ -166,11 +176,7 @@ export function CommandBar({ onNavigationSubmit }: CommandBarProps) {
         <div className="mt-2 px-3 text-center text-[11px] tracking-wide text-red-200/75">
           {errorMessage}
         </div>
-      ) : (
-      <div className="mt-2 px-3 text-center text-[11px] tracking-wide text-white/35">
-        Try commands like “from Library to Auditorium avoid Hostel_A” or “go to Main_Gate avoid Cafeteria”.
-      </div>
-      )}
+      ) : null}
     </form>
   );
 }

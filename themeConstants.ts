@@ -1,6 +1,9 @@
 export const THEME = {
   background: '#0B0E11',
   primaryAccent: '#00FF9D',
+  originAccent: '#38BDF8',
+  destinationAccent: '#FBBF24',
+  dangerAccent: '#F87171',
   surfaceLayer: 'rgba(255, 255, 255, 0.05)',
   surfaceBackdropBlur: '12px',
 } as const;

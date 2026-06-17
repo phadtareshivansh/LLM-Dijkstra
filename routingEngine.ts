@@ -8,6 +8,11 @@ export interface RoutingResult {
 
 const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
 
+interface Neighbor {
+  nodeName: string;
+  weight: number;
+}
+
 function getNodeIds(nodes: Node[]): Set<string> {
   return new Set(nodes.map((node) => node.name));
 }
@@ -24,6 +29,21 @@ function reconstructPath(previousByNode: Map<string, string>, end: string): stri
   return path;
 }
 
+function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]> {
+  const adjacency = new Map<string, Neighbor[]>();
+
+  for (const node of nodes) {
+    adjacency.set(node.name, []);
+  }
+
+  for (const edge of edges) {
+    adjacency.get(edge.from)?.push({ nodeName: edge.to, weight: edge.weight });
+    adjacency.get(edge.to)?.push({ nodeName: edge.from, weight: edge.weight });
+  }
+
+  return adjacency;
+}
+
 export function dijkstraShortestPath(
   nodes: Node[],
   edges: Edge[],
@@ -33,6 +53,7 @@ export function dijkstraShortestPath(
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const avoidSet = new Set(avoidNodes);
+  const adjacency = buildAdjacencyMap(nodes, edges);
 
   if (!nodeIds.has(start)) {
     return {
@@ -64,7 +85,10 @@ export function dijkstraShortestPath(
 
   for (const node of nodes) {
     distanceByNode.set(node.name, Number.POSITIVE_INFINITY);
-    unvisited.add(node.name);
+
+    if (!avoidSet.has(node.name)) {
+      unvisited.add(node.name);
+    }
   }
 
   distanceByNode.set(start, 0);
@@ -95,25 +119,21 @@ export function dijkstraShortestPath(
       };
     }
 
-    for (const edge of edges) {
-      if (edge.from !== currentNode) {
+    for (const neighbor of adjacency.get(currentNode) ?? []) {
+      if (avoidSet.has(neighbor.nodeName)) {
         continue;
       }
 
-      if (avoidSet.has(edge.to)) {
+      if (!unvisited.has(neighbor.nodeName)) {
         continue;
       }
 
-      if (!unvisited.has(edge.to)) {
-        continue;
-      }
-
-      const nextDistance = currentDistance + edge.weight;
-      const knownDistance = distanceByNode.get(edge.to) ?? Number.POSITIVE_INFINITY;
+      const nextDistance = currentDistance + neighbor.weight;
+      const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
 
       if (nextDistance < knownDistance) {
-        distanceByNode.set(edge.to, nextDistance);
-        previousByNode.set(edge.to, currentNode);
+        distanceByNode.set(neighbor.nodeName, nextDistance);
+        previousByNode.set(neighbor.nodeName, currentNode);
       }
     }
   }

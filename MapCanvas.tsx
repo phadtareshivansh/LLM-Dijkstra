@@ -1,11 +1,18 @@
 import React from 'react';
 import { Edge, Node, THEME } from './themeConstants';
+import { getNodeDisplayName } from './navigationUtils';
+
+export type NodeSelectionMode = 'origin' | 'destination' | 'avoid';
 
 export interface MapCanvasProps {
   nodes: Node[];
   edges: Edge[];
   activePath: string[];
   avoidNodes: string[];
+  origin?: string;
+  destination?: string;
+  selectionMode: NodeSelectionMode;
+  onNodeSelect: (nodeName: string) => void;
 }
 
 function buildActiveEdgeSet(activePath: string[]): Set<string> {
@@ -39,7 +46,46 @@ function getEdgeCoordinates(nodeMap: Map<string, Node>, edge: Edge) {
   };
 }
 
-export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasProps) {
+function getNodeAccent({
+  isAvoided,
+  isOrigin,
+  isDestination,
+  isActive,
+}: {
+  isAvoided: boolean;
+  isOrigin: boolean;
+  isDestination: boolean;
+  isActive: boolean;
+}) {
+  if (isAvoided) {
+    return THEME.dangerAccent;
+  }
+
+  if (isOrigin) {
+    return THEME.originAccent;
+  }
+
+  if (isDestination) {
+    return THEME.destinationAccent;
+  }
+
+  if (isActive) {
+    return THEME.primaryAccent;
+  }
+
+  return 'rgba(255, 255, 255, 0.85)';
+}
+
+export function MapCanvas({
+  nodes,
+  edges,
+  activePath,
+  avoidNodes,
+  origin,
+  destination,
+  selectionMode,
+  onNodeSelect,
+}: MapCanvasProps) {
   const nodeMap = buildNodeMap(nodes);
   const activeEdgeSet = buildActiveEdgeSet(activePath);
   const activeNodeSet = new Set(activePath);
@@ -77,26 +123,44 @@ export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasPro
 
         {edges.map((edge) => {
           const coordinates = getEdgeCoordinates(nodeMap, edge);
+          const fromNode = nodeMap.get(edge.from);
+          const toNode = nodeMap.get(edge.to);
 
-          if (!coordinates) {
+          if (!coordinates || !fromNode || !toNode) {
             return null;
           }
 
           const isActive = activeEdgeSet.has(`${edge.from}->${edge.to}`);
+          const labelX = (fromNode.x + toNode.x) / 2;
+          const labelY = (fromNode.y + toNode.y) / 2;
 
           return (
-            <line
-              key={`${edge.from}-${edge.to}`}
-              x1={coordinates.x1}
-              y1={coordinates.y1}
-              x2={coordinates.x2}
-              y2={coordinates.y2}
-              stroke={isActive ? THEME.primaryAccent : 'rgba(255, 255, 255, 0.18)'}
-              strokeWidth={isActive ? 3 : 1.5}
-              strokeLinecap="round"
-              filter={isActive ? 'url(#mintGlow)' : undefined}
-              className={isActive ? 'animate-pulse' : undefined}
-            />
+            <g key={`${edge.from}-${edge.to}`}>
+              <line
+                x1={coordinates.x1}
+                y1={coordinates.y1}
+                x2={coordinates.x2}
+                y2={coordinates.y2}
+                stroke={isActive ? THEME.primaryAccent : 'rgba(255, 255, 255, 0.18)'}
+                strokeWidth={isActive ? 3 : 1.5}
+                strokeLinecap="round"
+                filter={isActive ? 'url(#mintGlow)' : undefined}
+                className={isActive ? 'animate-pulse' : undefined}
+              />
+              <text
+                x={`${labelX}%`}
+                y={`${labelY}%`}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="select-none text-[3px] font-semibold"
+                fill={isActive ? THEME.primaryAccent : 'rgba(255,255,255,0.38)'}
+                stroke={THEME.background}
+                strokeWidth="0.45"
+                paintOrder="stroke"
+              >
+                {edge.weight}
+              </text>
+            </g>
           );
         })}
       </svg>
@@ -105,11 +169,33 @@ export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasPro
         {nodes.map((node) => {
           const isActive = activeNodeSet.has(node.name);
           const isAvoided = avoidNodeSet.has(node.name);
+          const isOrigin = origin === node.name;
+          const isDestination = destination === node.name;
+          const accent = getNodeAccent({ isAvoided, isOrigin, isDestination, isActive });
+          const roleLabel = isOrigin
+            ? 'Origin'
+            : isDestination
+              ? 'Destination'
+              : isAvoided
+                ? 'Avoided'
+                : isActive
+                  ? 'On route'
+                  : 'Available';
 
           return (
-            <div
+            <button
               key={node.name}
-              className="absolute select-none"
+              type="button"
+              aria-label={`${getNodeDisplayName(node.name)}. ${roleLabel}. Click to ${
+                selectionMode === 'origin'
+                  ? 'set as origin'
+                  : selectionMode === 'destination'
+                    ? 'set as destination'
+                    : 'toggle avoid'
+              }.`}
+              title={getNodeDisplayName(node.name)}
+              onClick={() => onNodeSelect(node.name)}
+              className="group absolute select-none rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               style={{
                 left: `${node.x}%`,
                 top: `${node.y}%`,
@@ -118,10 +204,10 @@ export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasPro
             >
               <div className="relative flex items-center">
                 <div
-                  className="relative h-4 w-4 rounded-full"
+                  className="relative h-4 w-4 rounded-full transition-shadow"
                   style={{
-                    backgroundColor: isAvoided ? '#EF4444' : isActive ? THEME.primaryAccent : 'rgba(255, 255, 255, 0.85)',
-                    boxShadow: isActive && !isAvoided ? `0 0 18px ${THEME.primaryAccent}` : 'none',
+                    backgroundColor: accent,
+                    boxShadow: isActive || isOrigin || isDestination ? `0 0 18px ${accent}` : 'none',
                     border: isAvoided ? '1px solid rgba(255, 255, 255, 0.35)' : 'none',
                   }}
                 >
@@ -131,13 +217,13 @@ export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasPro
                 </div>
 
                 <span
-                  className="ml-3 text-sm font-medium tracking-wide text-white/90"
+                  className="ml-3 rounded bg-black/30 px-1.5 py-0.5 text-sm font-medium tracking-wide text-white/90 backdrop-blur-sm transition-colors group-hover:bg-black/50"
                   style={{
                     fontFamily: 'Inter var, Inter, ui-sans-serif, system-ui, sans-serif',
-                    textShadow: isActive ? `0 0 8px ${THEME.primaryAccent}` : 'none',
+                    textShadow: isActive || isOrigin || isDestination ? `0 0 8px ${accent}` : 'none',
                   }}
                 >
-                  {node.name}
+                  {getNodeDisplayName(node.name)}
                 </span>
               </div>
 
@@ -147,7 +233,7 @@ export function MapCanvas({ nodes, edges, activePath, avoidNodes }: MapCanvasPro
                   style={{ boxShadow: '0 0 0 2px rgba(239, 68, 68, 0.18)' }}
                 />
               ) : null}
-            </div>
+            </button>
           );
         })}
       </div>
