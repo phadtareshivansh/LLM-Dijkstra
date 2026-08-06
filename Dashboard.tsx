@@ -10,8 +10,6 @@ const MIN_MAP_ZOOM = 0.78;
 const MAX_MAP_ZOOM = 1.34;
 const MAP_ZOOM_STEP = 0.12;
 
-type AppView = 'landing' | 'map';
-
 function clampMapZoom(value: number): number {
   return Math.min(MAX_MAP_ZOOM, Math.max(MIN_MAP_ZOOM, Number(value.toFixed(2))));
 }
@@ -530,7 +528,6 @@ function MinimizedPanelButton({ origin, destination, onExpand }: MinimizedPanelB
 }
 
 export function Dashboard() {
-  const [view, setView] = useState<AppView>(() => (hasQueryValue('view', 'map') ? 'map' : 'landing'));
   const [isPanelMinimized, setIsPanelMinimized] = useState(() => hasQueryValue('panel', 'minimized'));
   const [currentOrigin, setCurrentOrigin] = useState(DEFAULT_SOURCE);
   const [currentDestination, setCurrentDestination] = useState(DEFAULT_DESTINATION);
@@ -594,7 +591,6 @@ export function Dashboard() {
       return;
     }
 
-    setView('map');
     setTimelineStep(1);
     setIsAnimationRunning(true);
   }
