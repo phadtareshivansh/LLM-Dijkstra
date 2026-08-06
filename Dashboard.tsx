@@ -696,18 +696,6 @@ export function Dashboard() {
     setIsThreeDimensional(true);
   }
 
-  if (view === 'landing') {
-    return (
-      <LandingPage
-        origin={currentOrigin}
-        destination={currentDestination}
-        routePath={calculatedRoutePath}
-        sceneStepIndex={Math.min(2, calculatedRoutePath.length - 1)}
-        onEnterMap={handleEnterMap}
-      />
-    );
-  }
-
   const mapViewProps: MapViewProps = {
     origin: currentOrigin,
     destination: currentDestination,
@@ -732,6 +720,10 @@ export function Dashboard() {
     onToggleThreeD: handleToggleThreeD,
     onResetView: handleResetView,
   };
+
+  if (view === 'landing') {
+    return <MapView {...mapViewProps} />;
+  }
 
   return <MapView {...mapViewProps} />;
 }
