@@ -650,10 +650,6 @@ export function Dashboard() {
     onResetView: handleResetView,
   };
 
-  if (view === 'landing') {
-    return <MapView {...mapViewProps} />;
-  }
-
   return <MapView {...mapViewProps} />;
 }
 
