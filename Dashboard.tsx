@@ -312,70 +312,6 @@ function MapControls({
   );
 }
 
-interface LandingPageProps {
-  origin: string;
-  destination: string;
-  routePath: string[];
-  sceneStepIndex: number;
-  onEnterMap: () => void;
-}
-
-function LandingPage({ origin, destination, routePath, sceneStepIndex, onEnterMap }: LandingPageProps) {
-  return (
-    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
-      <RouteScene3D
-        nodes={CAMPUS_NODES}
-        edges={CAMPUS_EDGES}
-        activePath={routePath}
-        avoidNodes={[]}
-        stepIndex={sceneStepIndex}
-        variant="background"
-        showHud={false}
-      />
-      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.95)_0%,rgba(2,8,11,0.72)_33%,rgba(2,8,11,0.18)_72%,rgba(2,8,11,0.04)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1/2 bg-[linear-gradient(180deg,transparent,rgba(1,7,10,0.9))]" />
-
-      <section className="relative z-20 flex min-h-screen items-center px-5 py-8 sm:px-8 lg:px-14">
-        <div className="max-w-[620px]">
-          <div className="flex items-center gap-4">
-            <NetworkLogo className="h-14 w-14" />
-            <h1 className="text-4xl font-bold tracking-[-0.02em] text-white sm:text-5xl">
-              Dijkstra <span style={{ color: THEME.primaryAccent }}>Navigator</span>
-            </h1>
-          </div>
-
-          <p className="mt-7 max-w-[560px] text-xl leading-8 text-white/76">
-            Visualize the shortest campus route as a glowing isometric path, with every Dijkstra step shown on the map.
-          </p>
-
-          <div className="mt-9 grid max-w-[540px] gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-white/12 bg-white/[0.04] p-4 backdrop-blur-md">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/42">Source</p>
-              <p className="mt-2 text-lg font-semibold text-white">{getNodeLabel(origin)}</p>
-            </div>
-            <div className="rounded-lg border border-white/12 bg-white/[0.04] p-4 backdrop-blur-md">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/42">Destination</p>
-              <p className="mt-2 text-lg font-semibold text-white">{getNodeLabel(destination)}</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onEnterMap}
-            className="mt-9 inline-flex h-[60px] items-center justify-center gap-5 rounded-md px-8 text-lg font-semibold text-[#031610] shadow-[0_0_42px_rgba(84,246,186,0.28)] transition-transform hover:-translate-y-0.5"
-            style={{ background: 'linear-gradient(135deg, #54F6BA 0%, #35E9A8 100%)' }}
-          >
-            Launch navigator
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
-      </section>
-    </main>
-  );
-}
-
 interface MapViewProps {
   origin: string;
   destination: string;
@@ -651,13 +587,6 @@ export function Dashboard() {
       const nextOrigin = CAMPUS_NODES.find((node) => node.name !== value)?.name ?? '';
       setCurrentOrigin(nextOrigin);
     }
-  }
-
-  function handleEnterMap() {
-    setView('map');
-    setIsPanelMinimized(false);
-    setTimelineStep(1);
-    setIsAnimationRunning(canAnimate);
   }
 
   function handleStartRoute() {
