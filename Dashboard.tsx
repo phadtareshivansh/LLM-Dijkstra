@@ -398,7 +398,7 @@ function ControlPanel({
   canAnimate,
 }: ControlPanelProps) {
   return (
-    <section className="pointer-events-auto absolute left-3 top-7 z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:left-4 sm:p-6 md:left-6 md:max-w-[430px]">
+    <section className="pointer-events-auto absolute left-3 top-7 z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
       <button
         type="button"
         onClick={onMinimize}
