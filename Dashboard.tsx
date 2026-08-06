@@ -557,7 +557,7 @@ export function Dashboard() {
   }, [routeSignature, canAnimate]);
 
   useEffect(() => {
-    if (!isAnimationRunning || !canAnimate || view !== 'map') {
+    if (!isAnimationRunning || !canAnimate) {
       return undefined;
     }
 
@@ -571,7 +571,7 @@ export function Dashboard() {
     }, ROUTE_STEP_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [canAnimate, isAnimationRunning, timelineStep, totalSteps, view]);
+  }, [canAnimate, isAnimationRunning, timelineStep, totalSteps]);
 
   function handleOriginChange(value: string) {
     setCurrentOrigin(value);
