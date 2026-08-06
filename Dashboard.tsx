@@ -376,6 +376,107 @@ function LandingPage({ origin, destination, routePath, sceneStepIndex, onEnterMa
   );
 }
 
+interface MapViewProps {
+  origin: string;
+  destination: string;
+  routeError: string | null;
+  routePath: string[];
+  sceneStepIndex: number;
+  zoomLevel: number;
+  isThreeDimensional: boolean;
+  isPanelMinimized: boolean;
+  timelineStep: number;
+  totalSteps: number;
+  canAnimate: boolean;
+  onOriginChange: (value: string) => void;
+  onDestinationChange: (value: string) => void;
+  onStartRoute: () => void;
+  onMinimize: () => void;
+  onExpand: () => void;
+  onSkip: () => void;
+  onReplay: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onToggleThreeD: () => void;
+  onResetView: () => void;
+}
+
+function MapView({
+  origin,
+  destination,
+  routeError,
+  routePath,
+  sceneStepIndex,
+  zoomLevel,
+  isThreeDimensional,
+  isPanelMinimized,
+  timelineStep,
+  totalSteps,
+  canAnimate,
+  onOriginChange,
+  onDestinationChange,
+  onStartRoute,
+  onMinimize,
+  onExpand,
+  onSkip,
+  onReplay,
+  onZoomIn,
+  onZoomOut,
+  onToggleThreeD,
+  onResetView,
+}: MapViewProps) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
+      <RouteScene3D
+        nodes={CAMPUS_NODES}
+        edges={CAMPUS_EDGES}
+        activePath={routePath}
+        avoidNodes={[]}
+        stepIndex={sceneStepIndex}
+        zoomLevel={zoomLevel}
+        isThreeDimensional={isThreeDimensional}
+        variant="background"
+        showHud={false}
+      />
+
+      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[270px] bg-[linear-gradient(180deg,transparent,rgba(1,7,10,0.78)_46%,rgba(1,7,10,0.94)_100%)]" />
+
+      {isPanelMinimized ? (
+        <MinimizedPanelButton origin={origin} destination={destination} onExpand={onExpand} />
+      ) : (
+        <ControlPanel
+          origin={origin}
+          destination={destination}
+          routeError={routeError}
+          onOriginChange={onOriginChange}
+          onDestinationChange={onDestinationChange}
+          onStartRoute={onStartRoute}
+          onMinimize={onMinimize}
+          canAnimate={canAnimate}
+        />
+      )}
+
+      <MapControls
+        zoomLevel={zoomLevel}
+        isThreeDimensional={isThreeDimensional}
+        onZoomIn={onZoomIn}
+        onZoomOut={onZoomOut}
+        onToggleThreeD={onToggleThreeD}
+        onResetView={onResetView}
+      />
+
+      <RouteTimeline
+        currentStep={timelineStep}
+        totalSteps={totalSteps}
+        onSkip={onSkip}
+        onReplay={onReplay}
+        canControl={canAnimate}
+      />
+    </main>
+  );
+}
+
 interface ControlPanelProps {
   origin: string;
   destination: string;
