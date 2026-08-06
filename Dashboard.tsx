@@ -708,56 +708,32 @@ export function Dashboard() {
     );
   }
 
-  return (
-    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
-      <RouteScene3D
-        nodes={CAMPUS_NODES}
-        edges={CAMPUS_EDGES}
-        activePath={calculatedRoutePath}
-        avoidNodes={[]}
-        stepIndex={sceneStepIndex}
-        zoomLevel={mapZoomLevel}
-        isThreeDimensional={isThreeDimensional}
-        variant="background"
-        showHud={false}
-      />
+  const mapViewProps: MapViewProps = {
+    origin: currentOrigin,
+    destination: currentDestination,
+    routeError,
+    routePath: calculatedRoutePath,
+    sceneStepIndex,
+    zoomLevel: mapZoomLevel,
+    isThreeDimensional,
+    isPanelMinimized,
+    timelineStep,
+    totalSteps,
+    canAnimate,
+    onOriginChange: handleOriginChange,
+    onDestinationChange: handleDestinationChange,
+    onStartRoute: handleStartRoute,
+    onMinimize: () => setIsPanelMinimized(true),
+    onExpand: () => setIsPanelMinimized(false),
+    onSkip: handleSkipAnimation,
+    onReplay: handleStartRoute,
+    onZoomIn: handleZoomIn,
+    onZoomOut: handleZoomOut,
+    onToggleThreeD: handleToggleThreeD,
+    onResetView: handleResetView,
+  };
 
-      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[270px] bg-[linear-gradient(180deg,transparent,rgba(1,7,10,0.78)_46%,rgba(1,7,10,0.94)_100%)]" />
-
-      {isPanelMinimized ? (
-        <MinimizedPanelButton origin={currentOrigin} destination={currentDestination} onExpand={() => setIsPanelMinimized(false)} />
-      ) : (
-        <ControlPanel
-          origin={currentOrigin}
-          destination={currentDestination}
-          routeError={routeError}
-          onOriginChange={handleOriginChange}
-          onDestinationChange={handleDestinationChange}
-          onStartRoute={handleStartRoute}
-          onMinimize={() => setIsPanelMinimized(true)}
-          canAnimate={canAnimate}
-        />
-      )}
-
-      <MapControls
-        zoomLevel={mapZoomLevel}
-        isThreeDimensional={isThreeDimensional}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onToggleThreeD={handleToggleThreeD}
-        onResetView={handleResetView}
-      />
-
-      <RouteTimeline
-        currentStep={timelineStep}
-        totalSteps={totalSteps}
-        onSkip={handleSkipAnimation}
-        onReplay={handleStartRoute}
-        canControl={canAnimate}
-      />
-    </main>
-  );
+  return <MapView {...mapViewProps} />;
 }
 
 export default Dashboard;
