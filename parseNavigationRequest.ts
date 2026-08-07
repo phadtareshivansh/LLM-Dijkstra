@@ -1,4 +1,3 @@
-import { GoogleGenAI, Type } from '@google/genai';
 import { CAMPUS_NODE_NAMES, findNodeMentions, resolveNodeName, uniqueNodeNames } from './navigationUtils';
 
 export interface NavigationParseResult {
@@ -15,31 +14,6 @@ const SYSTEM_PROMPT = [
   'Do not add commentary, explanation, or extra keys.',
   'If a field is missing, use null for origin and destination and an empty array for avoid_nodes.',
 ].join(' ');
-
-const NAVIGATION_RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
-  additionalProperties: false,
-  properties: {
-    origin: {
-      type: Type.STRING,
-      nullable: true,
-      description: 'Starting campus node name, or null when not provided.',
-    },
-    destination: {
-      type: Type.STRING,
-      nullable: true,
-      description: 'Ending campus node name, or null when not provided.',
-    },
-    avoid_nodes: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.STRING,
-      },
-      description: 'Campus nodes to avoid while navigating.',
-    },
-  },
-  required: ['origin', 'destination', 'avoid_nodes'],
-} as const;
 
 const AVOID_KEYWORD_PATTERN = /\b(?:avoid(?:ing)?|without|skip(?:ping)?|exclude|except|not\s+via)\b/i;
 
@@ -120,7 +94,11 @@ function parseNavigationRequestLocally(userInput: string): NavigationParseResult
     }
 
     if (!destination) {
-      destination = routeMentions.length >= 2 ? routeMentions[1] : routeMentions[0] ?? null;
+      if (routeMentions.length >= 2) {
+        destination = routeMentions[1];
+      } else if (!origin && routeMentions.length === 1) {
+        destination = routeMentions[0];
+      }
     }
   }
 
@@ -152,6 +130,7 @@ function mergeParseResults(primary: NavigationParseResult, fallback: NavigationP
 }
 
 async function parseWithGemini(userInput: string): Promise<NavigationParseResult> {
+  const { GoogleGenAI, Type } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 
   const response = await ai.models.generateContent({
@@ -160,7 +139,30 @@ async function parseWithGemini(userInput: string): Promise<NavigationParseResult
     config: {
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: 'application/json',
-      responseSchema: NAVIGATION_RESPONSE_SCHEMA,
+      responseSchema: {
+        type: Type.OBJECT,
+        additionalProperties: false,
+        properties: {
+          origin: {
+            type: Type.STRING,
+            nullable: true,
+            description: 'Starting campus node name, or null when not provided.',
+          },
+          destination: {
+            type: Type.STRING,
+            nullable: true,
+            description: 'Ending campus node name, or null when not provided.',
+          },
+          avoid_nodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.STRING,
+            },
+            description: 'Campus nodes to avoid while navigating.',
+          },
+        },
+        required: ['origin', 'destination', 'avoid_nodes'],
+      },
     },
   });
 
