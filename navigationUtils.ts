@@ -57,10 +57,6 @@ export function resolveNodeName(value: string | null | undefined): string | null
   return NODE_LOOKUP.get(normalizedValue) ?? null;
 }
 
-export function getNodeDisplayName(nodeName: string): string {
-  return nodeName.replace(/_/g, ' ');
-}
-
 export function findNodeMentions(value: string): NodeMention[] {
   const normalizedValue = normalizeText(value);
   const mentions: NodeMention[] = [];
