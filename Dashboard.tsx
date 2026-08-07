@@ -2,6 +2,14 @@ import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import RouteScene3D from './RouteScene3D';
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
 import { dijkstraShortestPath as dijkstra } from './routingEngine';
+import { parseNavigationRequest } from './parseNavigationRequest';
+
+type AiParseState = 'idle' | 'parsing';
+
+interface AiFeedback {
+  message: string;
+  tone: 'success' | 'error';
+}
 
 const ROUTE_STEP_MS = 920;
 const DEFAULT_SOURCE = 'Main_Gate';
@@ -313,6 +321,7 @@ function MapControls({
 interface MapViewProps {
   origin: string;
   destination: string;
+  avoidNodes: string[];
   routeError: string | null;
   routePath: string[];
   sceneStepIndex: number;
@@ -322,8 +331,13 @@ interface MapViewProps {
   timelineStep: number;
   totalSteps: number;
   canAnimate: boolean;
+  aiPrompt: string;
+  aiParseState: AiParseState;
+  aiFeedback: AiFeedback | null;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
+  onAiPromptChange: (value: string) => void;
+  onAiSubmit: () => void;
   onStartRoute: () => void;
   onMinimize: () => void;
   onExpand: () => void;
@@ -338,6 +352,7 @@ interface MapViewProps {
 function MapView({
   origin,
   destination,
+  avoidNodes,
   routeError,
   routePath,
   sceneStepIndex,
@@ -347,8 +362,13 @@ function MapView({
   timelineStep,
   totalSteps,
   canAnimate,
+  aiPrompt,
+  aiParseState,
+  aiFeedback,
   onOriginChange,
   onDestinationChange,
+  onAiPromptChange,
+  onAiSubmit,
   onStartRoute,
   onMinimize,
   onExpand,
@@ -365,7 +385,7 @@ function MapView({
         nodes={CAMPUS_NODES}
         edges={CAMPUS_EDGES}
         activePath={routePath}
-        avoidNodes={[]}
+        avoidNodes={avoidNodes}
         stepIndex={sceneStepIndex}
         zoomLevel={zoomLevel}
         isThreeDimensional={isThreeDimensional}
@@ -383,8 +403,13 @@ function MapView({
           origin={origin}
           destination={destination}
           routeError={routeError}
+          aiPrompt={aiPrompt}
+          aiParseState={aiParseState}
+          aiFeedback={aiFeedback}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
+          onAiPromptChange={onAiPromptChange}
+          onAiSubmit={onAiSubmit}
           onStartRoute={onStartRoute}
           onMinimize={onMinimize}
           canAnimate={canAnimate}
@@ -415,8 +440,13 @@ interface ControlPanelProps {
   origin: string;
   destination: string;
   routeError: string | null;
+  aiPrompt: string;
+  aiParseState: AiParseState;
+  aiFeedback: AiFeedback | null;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
+  onAiPromptChange: (value: string) => void;
+  onAiSubmit: () => void;
   onStartRoute: () => void;
   onMinimize: () => void;
   canAnimate: boolean;
@@ -426,8 +456,13 @@ function ControlPanel({
   origin,
   destination,
   routeError,
+  aiPrompt,
+  aiParseState,
+  aiFeedback,
   onOriginChange,
   onDestinationChange,
+  onAiPromptChange,
+  onAiSubmit,
   onStartRoute,
   onMinimize,
   canAnimate,
@@ -452,7 +487,7 @@ function ControlPanel({
         </h2>
       </div>
 
-      <div className="mt-9 space-y-7">
+      <div className="mt-6 space-y-7">
         <NodeSelect
           id="source-select"
           label="Source"
@@ -467,6 +502,59 @@ function ControlPanel({
           blockedValue={origin}
           onChange={onDestinationChange}
         />
+
+        <div>
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-white">Ask AI</span>
+            <span className="relative flex items-center">
+              <span className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-[#54F6BA]">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="m12 2 2.34 7.16L22 12l-7.66 2.84L12 22l-2.34-7.16L2 12l7.66-2.84L12 2Z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={aiPrompt}
+                onChange={(event) => onAiPromptChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    onAiSubmit();
+                  }
+                }}
+                disabled={aiParseState === 'parsing'}
+                placeholder='e.g. "from main gate to the library"'
+                aria-label="Ask AI to plan a route"
+                className="h-[54px] w-full rounded-md border border-white/18 bg-[#081116]/88 pl-11 pr-24 text-base text-white placeholder-white/38 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition-colors hover:border-emerald-300/40 focus:border-[#54F6BA]/70 disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={onAiSubmit}
+                disabled={aiParseState === 'parsing' || !aiPrompt.trim()}
+                className="absolute right-1.5 top-1/2 flex h-11 -translate-y-1/2 items-center justify-center gap-2 rounded border border-white/14 bg-[#0B1914] px-3 text-sm font-semibold text-[#54F6BA] transition-colors hover:border-emerald-300/45 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {aiParseState === 'parsing' ? (
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" stroke="rgba(84,246,186,0.3)" strokeWidth="3" />
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="m12 4 1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4Z" fill="currentColor" />
+                    <path d="M18.5 15.5 19.3 17.7 21.5 18.5 19.3 19.3 18.5 21.5 17.7 19.3 15.5 18.5 17.7 17.7 18.5 15.5Z" fill="currentColor" />
+                  </svg>
+                )}
+                <span className="hidden sm:inline">{aiParseState === 'parsing' ? 'Thinking' : 'Ask'}</span>
+              </button>
+            </span>
+          </label>
+          {aiFeedback ? (
+            <p
+              className={`mt-2 text-sm leading-5 ${aiFeedback.tone === 'success' ? 'text-emerald-200' : 'text-red-200'}`}
+            >
+              {aiFeedback.message}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <button
@@ -488,7 +576,7 @@ function ControlPanel({
             <path d="m12 2 2.34 7.16L22 12l-7.66 2.84L12 22l-2.34-7.16L2 12l7.66-2.84L12 2Z" />
           </svg>
           <p>
-            AI-assisted Dijkstra computes the shortest path across campus.
+            Describe your trip in plain words and AI will pick the start, end, and any places to skip.
             {routeError ? <span className="mt-2 block text-red-200">{routeError}</span> : null}
           </p>
         </div>
@@ -531,14 +619,18 @@ export function Dashboard() {
   const [isPanelMinimized, setIsPanelMinimized] = useState(() => hasQueryValue('panel', 'minimized'));
   const [currentOrigin, setCurrentOrigin] = useState(DEFAULT_SOURCE);
   const [currentDestination, setCurrentDestination] = useState(DEFAULT_DESTINATION);
+  const [avoidNodes, setAvoidNodes] = useState<string[]>([]);
   const [timelineStep, setTimelineStep] = useState(1);
   const [isAnimationRunning, setIsAnimationRunning] = useState(true);
   const [mapZoomLevel, setMapZoomLevel] = useState(1);
   const [isThreeDimensional, setIsThreeDimensional] = useState(true);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiParseState, setAiParseState] = useState<AiParseState>('idle');
+  const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
 
   const routeResult = useMemo(() => {
-    return dijkstra(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, []);
-  }, [currentOrigin, currentDestination]);
+    return dijkstra(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes);
+  }, [currentOrigin, currentDestination, avoidNodes]);
 
   const calculatedRoutePath = routeResult.path;
   const calculatedDistance = routeResult.distance;
@@ -572,6 +664,7 @@ export function Dashboard() {
 
   function handleOriginChange(value: string) {
     setCurrentOrigin(value);
+    setAvoidNodes([]);
     if (value === currentDestination) {
       const nextDestination = CAMPUS_NODES.find((node) => node.name !== value)?.name ?? '';
       setCurrentDestination(nextDestination);
@@ -580,10 +673,64 @@ export function Dashboard() {
 
   function handleDestinationChange(value: string) {
     setCurrentDestination(value);
+    setAvoidNodes([]);
     if (value === currentOrigin) {
       const nextOrigin = CAMPUS_NODES.find((node) => node.name !== value)?.name ?? '';
       setCurrentOrigin(nextOrigin);
     }
+  }
+
+  async function handleAiSubmit() {
+    const query = aiPrompt.trim();
+
+    if (!query || aiParseState === 'parsing') {
+      return;
+    }
+
+    setAiParseState('parsing');
+    setAiFeedback(null);
+
+    const parsed = await parseNavigationRequest(query);
+    const changes: string[] = [];
+
+    if (parsed.origin) {
+      setCurrentOrigin(parsed.origin);
+      changes.push(`start at ${getNodeLabel(parsed.origin)}`);
+    }
+
+    if (parsed.destination) {
+      setCurrentDestination(parsed.destination);
+      changes.push(`end at ${getNodeLabel(parsed.destination)}`);
+    }
+
+    setAvoidNodes(parsed.avoid_nodes);
+
+    if (currentOrigin === parsed.destination && parsed.origin && parsed.origin !== parsed.destination) {
+      const nextOrigin = CAMPUS_NODES.find((node) => node.name !== parsed.destination)?.name ?? '';
+      setCurrentOrigin(nextOrigin);
+    }
+
+    if (currentDestination === parsed.origin && parsed.destination && parsed.origin !== parsed.destination) {
+      const nextDestination = CAMPUS_NODES.find((node) => node.name !== parsed.origin)?.name ?? '';
+      setCurrentDestination(nextDestination);
+    }
+
+    const avoidedLabel = parsed.avoid_nodes.map(getNodeLabel).join(', ');
+
+    if (changes.length > 0 || parsed.avoid_nodes.length > 0) {
+      const summary = [...changes];
+      if (avoidedLabel) {
+        summary.push(`skip ${avoidedLabel}`);
+      }
+      setAiFeedback({ message: `Route set: ${summary.join(', ')}.`, tone: 'success' });
+    } else {
+      setAiFeedback({
+        message: 'Could not find any campus locations in that message. Try names like "main gate" or "library".',
+        tone: 'error',
+      });
+    }
+
+    setAiParseState('idle');
   }
 
   function handleStartRoute() {
@@ -624,6 +771,7 @@ export function Dashboard() {
   const mapViewProps: MapViewProps = {
     origin: currentOrigin,
     destination: currentDestination,
+    avoidNodes,
     routeError,
     routePath: calculatedRoutePath,
     sceneStepIndex,
@@ -633,8 +781,13 @@ export function Dashboard() {
     timelineStep,
     totalSteps,
     canAnimate,
+    aiPrompt,
+    aiParseState,
+    aiFeedback,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
+    onAiPromptChange: setAiPrompt,
+    onAiSubmit: handleAiSubmit,
     onStartRoute: handleStartRoute,
     onMinimize: () => setIsPanelMinimized(true),
     onExpand: () => setIsPanelMinimized(false),
