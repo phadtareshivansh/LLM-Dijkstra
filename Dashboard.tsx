@@ -171,12 +171,23 @@ interface RouteTimelineProps {
   currentStep: number;
   totalSteps: number;
   distance: number;
+  isPaused: boolean;
   onSkip: () => void;
+  onTogglePause: () => void;
   onReplay: () => void;
   canControl: boolean;
 }
 
-function RouteTimeline({ currentStep, totalSteps, distance, onSkip, onReplay, canControl }: RouteTimelineProps) {
+function RouteTimeline({
+  currentStep,
+  totalSteps,
+  distance,
+  isPaused,
+  onSkip,
+  onTogglePause,
+  onReplay,
+  canControl,
+}: RouteTimelineProps) {
   const steps = Array.from({ length: totalSteps }, (_, index) => index + 1);
   const hasDistance = Number.isFinite(distance) && distance >= 0;
 
@@ -253,12 +264,31 @@ function RouteTimeline({ currentStep, totalSteps, distance, onSkip, onReplay, ca
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onReplay}
-          disabled={!canControl}
-          className="inline-flex h-14 w-full items-center justify-center gap-3 rounded-md border border-white/18 bg-black/18 px-5 text-base font-semibold text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40 lg:w-[214px]"
-        >
+<div className="flex w-full items-stretch justify-center gap-3 sm:w-[270px]">
+          <button
+            type="button"
+            onClick={onTogglePause}
+            disabled={!canControl || currentStep >= totalSteps}
+            aria-label={isPaused ? 'Resume animation' : 'Pause animation'}
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isPaused ? (
+              <svg className="ml-0.5 h-6 w-6 text-[#54F6BA]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7L8 5Z" />
+              </svg>
+            ) : (
+              <svg className="h-6 w-6 text-[#54F6BA]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+              </svg>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onReplay}
+            disabled={!canControl}
+            className="inline-flex h-14 flex-1 items-center justify-center gap-3 rounded-md border border-white/18 bg-black/18 px-5 text-base font-semibold text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
           <svg className="h-6 w-6 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M20 12a8 8 0 0 1-13.66 5.66M4 12A8 8 0 0 1 17.66 6.34"
@@ -270,6 +300,7 @@ function RouteTimeline({ currentStep, totalSteps, distance, onSkip, onReplay, ca
           </svg>
           Replay
         </button>
+        </div>
       </div>
     </section>
   );
@@ -372,17 +403,20 @@ interface MapViewProps {
   totalSteps: number;
   distance: number;
   canAnimate: boolean;
+  isPaused: boolean;
   aiPrompt: string;
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
+  onSwapRoute: () => void;
   onAiPromptChange: (value: string) => void;
   onAiSubmit: () => void;
   onStartRoute: () => void;
   onMinimize: () => void;
   onExpand: () => void;
   onSkip: () => void;
+  onTogglePause: () => void;
   onReplay: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -404,17 +438,20 @@ function MapView({
   totalSteps,
   distance,
   canAnimate,
+  isPaused,
   aiPrompt,
   aiParseState,
   aiFeedback,
   onOriginChange,
   onDestinationChange,
+  onSwapRoute,
   onAiPromptChange,
   onAiSubmit,
   onStartRoute,
   onMinimize,
   onExpand,
   onSkip,
+  onTogglePause,
   onReplay,
   onZoomIn,
   onZoomOut,
@@ -450,6 +487,7 @@ function MapView({
           aiFeedback={aiFeedback}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
+          onSwapRoute={onSwapRoute}
           onAiPromptChange={onAiPromptChange}
           onAiSubmit={onAiSubmit}
           onStartRoute={onStartRoute}
@@ -471,7 +509,9 @@ function MapView({
         currentStep={timelineStep}
         totalSteps={totalSteps}
         distance={distance}
+        isPaused={isPaused}
         onSkip={onSkip}
+        onTogglePause={onTogglePause}
         onReplay={onReplay}
         canControl={canAnimate}
       />
@@ -488,6 +528,7 @@ interface ControlPanelProps {
   aiFeedback: AiFeedback | null;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
+  onSwapRoute: () => void;
   onAiPromptChange: (value: string) => void;
   onAiSubmit: () => void;
   onStartRoute: () => void;
@@ -504,6 +545,7 @@ function ControlPanel({
   aiFeedback,
   onOriginChange,
   onDestinationChange,
+  onSwapRoute,
   onAiPromptChange,
   onAiSubmit,
   onStartRoute,
@@ -531,13 +573,26 @@ function ControlPanel({
       </div>
 
       <div className="mt-6 space-y-7">
-        <NodeSelect
-          id="source-select"
-          label="Source"
-          value={origin}
-          blockedValue={destination}
-          onChange={onOriginChange}
-        />
+        <div className="relative">
+          <NodeSelect
+            id="source-select"
+            label="Source"
+            value={origin}
+            blockedValue={destination}
+            onChange={onOriginChange}
+          />
+          <button
+            type="button"
+            onClick={onSwapRoute}
+            aria-label="Swap source and destination"
+            title="Swap source and destination"
+            className="absolute right-9 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md border border-white/18 bg-[#0B1914] text-[#54F6BA] shadow-lg shadow-black/40 transition-colors hover:border-emerald-300/45"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
         <NodeSelect
           id="destination-select"
           label="Destination"
@@ -780,6 +835,24 @@ export function Dashboard() {
     setAiParseState('idle');
   }
 
+  function handleSwapRoute() {
+    setCurrentOrigin(currentDestination);
+    setCurrentDestination(currentOrigin);
+  }
+
+  function handleTogglePause() {
+    if (!canAnimate) {
+      return;
+    }
+
+    if (isAnimationRunning) {
+      setIsAnimationRunning(false);
+      return;
+    }
+
+    setIsAnimationRunning(timelineStep < totalSteps);
+  }
+
   function handleStartRoute() {
     if (!canAnimate) {
       return;
@@ -829,11 +902,14 @@ export function Dashboard() {
     totalSteps,
     distance: calculatedDistance,
     canAnimate,
+    isPaused: !isAnimationRunning,
     aiPrompt,
     aiParseState,
     aiFeedback,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
+    onSwapRoute: handleSwapRoute,
+    onTogglePause: handleTogglePause,
     onAiPromptChange: setAiPrompt,
     onAiSubmit: handleAiSubmit,
     onStartRoute: handleStartRoute,
