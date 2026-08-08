@@ -30,6 +30,39 @@ function hasQueryValue(name: string, value: string): boolean {
   return new URLSearchParams(window.location.search).get(name) === value;
 }
 
+function getQueryNode(name: string, fallback: string): string {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  const value = new URLSearchParams(window.location.search).get(name);
+
+  if (!value) {
+    return fallback;
+  }
+
+  return CAMPUS_NODES.some((node) => node.name === value) ? value : fallback;
+}
+
+function getQueryAvoidNodes(): string[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  const value = new URLSearchParams(window.location.search).get('avoid');
+
+  if (!value) {
+    return [];
+  }
+
+  const validNames = new Set(CAMPUS_NODES.map((node) => node.name));
+
+  return value
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => validNames.has(name));
+}
+
 function getNodeLabel(nodeName: string): string {
   if (nodeName === 'Main_Gate') {
     return 'Main Entrance';
@@ -137,13 +170,15 @@ function NodeSelect({ id, label, value, blockedValue, onChange }: NodeSelectProp
 interface RouteTimelineProps {
   currentStep: number;
   totalSteps: number;
+  distance: number;
   onSkip: () => void;
   onReplay: () => void;
   canControl: boolean;
 }
 
-function RouteTimeline({ currentStep, totalSteps, onSkip, onReplay, canControl }: RouteTimelineProps) {
+function RouteTimeline({ currentStep, totalSteps, distance, onSkip, onReplay, canControl }: RouteTimelineProps) {
   const steps = Array.from({ length: totalSteps }, (_, index) => index + 1);
+  const hasDistance = Number.isFinite(distance) && distance >= 0;
 
   return (
     <section className="pointer-events-auto absolute bottom-4 left-3 right-3 z-40 rounded-lg border border-white/14 bg-[#071116]/88 px-5 py-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:left-4 sm:right-4 sm:px-10 sm:py-6">
@@ -162,11 +197,16 @@ function RouteTimeline({ currentStep, totalSteps, onSkip, onReplay, canControl }
         </button>
 
         <div className="min-w-0 flex-1">
-          <div className="mb-7 text-center">
+          <div className="mb-5 text-center">
             <p className="text-base font-medium text-white">Step</p>
             <p className="mt-2 text-2xl font-semibold text-white">
               <span style={{ color: THEME.primaryAccent }}>{currentStep}</span> / {totalSteps}
             </p>
+            {hasDistance ? (
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/45">
+                Shortest route · {distance} unit{distance === 1 ? '' : 's'}
+              </p>
+            ) : null}
           </div>
 
           <div className="mx-auto flex max-w-[980px] items-center">
@@ -330,6 +370,7 @@ interface MapViewProps {
   isPanelMinimized: boolean;
   timelineStep: number;
   totalSteps: number;
+  distance: number;
   canAnimate: boolean;
   aiPrompt: string;
   aiParseState: AiParseState;
@@ -361,6 +402,7 @@ function MapView({
   isPanelMinimized,
   timelineStep,
   totalSteps,
+  distance,
   canAnimate,
   aiPrompt,
   aiParseState,
@@ -428,6 +470,7 @@ function MapView({
       <RouteTimeline
         currentStep={timelineStep}
         totalSteps={totalSteps}
+        distance={distance}
         onSkip={onSkip}
         onReplay={onReplay}
         canControl={canAnimate}
@@ -617,9 +660,13 @@ function MinimizedPanelButton({ origin, destination, onExpand }: MinimizedPanelB
 
 export function Dashboard() {
   const [isPanelMinimized, setIsPanelMinimized] = useState(() => hasQueryValue('panel', 'minimized'));
-  const [currentOrigin, setCurrentOrigin] = useState(DEFAULT_SOURCE);
-  const [currentDestination, setCurrentDestination] = useState(DEFAULT_DESTINATION);
-  const [avoidNodes, setAvoidNodes] = useState<string[]>([]);
+  const [currentOrigin, setCurrentOrigin] = useState(() => getQueryNode('origin', DEFAULT_SOURCE));
+  const [currentDestination, setCurrentDestination] = useState(() => {
+    const requested = getQueryNode('destination', DEFAULT_DESTINATION);
+
+    return requested !== currentOrigin ? requested : DEFAULT_DESTINATION;
+  });
+  const [avoidNodes, setAvoidNodes] = useState<string[]>(getQueryAvoidNodes);
   const [timelineStep, setTimelineStep] = useState(1);
   const [isAnimationRunning, setIsAnimationRunning] = useState(true);
   const [mapZoomLevel, setMapZoomLevel] = useState(1);
@@ -780,6 +827,7 @@ export function Dashboard() {
     isPanelMinimized,
     timelineStep,
     totalSteps,
+    distance: calculatedDistance,
     canAnimate,
     aiPrompt,
     aiParseState,
