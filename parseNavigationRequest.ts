@@ -17,6 +17,96 @@ const SYSTEM_PROMPT = [
 
 const AVOID_KEYWORD_PATTERN = /\b(?:avoid(?:ing)?|without|skip(?:ping)?|exclude|except|not\s+via)\b/i;
 
+export const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
+
+const PARSE_CACHE_KEY_PREFIX = 'dijkstra-navigator:parse:';
+export const PARSE_CACHE_TTL_MS = 30 * 60 * 1000;
+
+interface CachedParseEntry {
+  result: NavigationParseResult;
+  timestamp: number;
+}
+
+function getCacheStore(): Storage | null {
+  try {
+    const storage = globalThis.localStorage;
+
+    if (!storage) {
+      return null;
+    }
+
+    storage.getItem('__storage_probe__');
+
+    return storage;
+  } catch {
+    return null;
+  }
+}
+
+function getCachedParse(input: string): NavigationParseResult | null {
+  const store = getCacheStore();
+
+  if (!store) {
+    return null;
+  }
+
+  try {
+    const rawEntry = store.getItem(PARSE_CACHE_KEY_PREFIX + input);
+
+    if (!rawEntry) {
+      return null;
+    }
+
+    const cached = JSON.parse(rawEntry) as CachedParseEntry;
+
+    if (Date.now() - cached.timestamp > PARSE_CACHE_TTL_MS) {
+      store.removeItem(PARSE_CACHE_KEY_PREFIX + input);
+      return null;
+    }
+
+    return sanitizeNavigationParseResult(cached.result);
+  } catch {
+    return null;
+  }
+}
+
+function setCachedParse(input: string, result: NavigationParseResult): void {
+  const store = getCacheStore();
+
+  if (!store) {
+    return;
+  }
+
+  try {
+    const entry: CachedParseEntry = {
+      result,
+      timestamp: Date.now(),
+    };
+    store.setItem(PARSE_CACHE_KEY_PREFIX + input, JSON.stringify(entry));
+  } catch {
+    // Caching is best-effort; a full or blocked store must never break parsing.
+  }
+}
+
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Gemini request timed out.'));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
+
 function getGeminiApiKey(): string {
   const environment = globalThis as typeof globalThis & {
     process?: { env?: Record<string, string | undefined> };
@@ -133,7 +223,7 @@ async function parseWithGemini(userInput: string): Promise<NavigationParseResult
   const { GoogleGenAI, Type } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 
-  const response = await ai.models.generateContent({
+  const request = ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: userInput,
     config: {
@@ -166,6 +256,8 @@ async function parseWithGemini(userInput: string): Promise<NavigationParseResult
     },
   });
 
+  const response = await withTimeout(request, GEMINI_REQUEST_TIMEOUT_MS);
+
   const rawText = response.text?.trim();
 
   if (!rawText) {
@@ -176,12 +268,23 @@ async function parseWithGemini(userInput: string): Promise<NavigationParseResult
 }
 
 export async function parseNavigationRequest(userInput: string): Promise<NavigationParseResult> {
+  const cachedParse = getCachedParse(userInput);
+
+  if (cachedParse) {
+    return cachedParse;
+  }
+
   const fallbackParse = parseNavigationRequestLocally(userInput);
+  let parseResult: NavigationParseResult;
 
   try {
     const geminiParse = await parseWithGemini(userInput);
-    return mergeParseResults(geminiParse, fallbackParse);
+    parseResult = mergeParseResults(geminiParse, fallbackParse);
   } catch {
-    return fallbackParse;
+    parseResult = fallbackParse;
   }
+
+  setCachedParse(userInput, parseResult);
+
+  return parseResult;
 }
