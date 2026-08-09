@@ -6,7 +6,7 @@ export interface RoutingResult {
   error?: string;
 }
 
-const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
+export const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
 
 interface Neighbor {
   nodeName: string;
