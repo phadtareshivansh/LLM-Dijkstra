@@ -1,7 +1,10 @@
 import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import RouteScene3D from './RouteScene3D';
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
-import { dijkstraShortestPath as dijkstra } from './routingEngine';
+import { RoutingResult, UNREACHABLE_ERROR } from './routingEngine';
+import { kShortestPaths } from './kShortestPaths';
+import { buildDirections } from './directions';
+import { buildShareUrl } from './shareUtils';
 import { parseNavigationRequest } from './parseNavigationRequest';
 
 type AiParseState = 'idle' | 'parsing';
@@ -172,6 +175,11 @@ interface RouteTimelineProps {
   totalSteps: number;
   distance: number;
   isPaused: boolean;
+  routeIndex: number;
+  routeCount: number;
+  pathLength: number;
+  avoidNodes: string[];
+  onRouteChange: (routeIndex: number) => void;
   onSkip: () => void;
   onTogglePause: () => void;
   onReplay: () => void;
@@ -183,6 +191,11 @@ function RouteTimeline({
   totalSteps,
   distance,
   isPaused,
+  routeIndex,
+  routeCount,
+  pathLength,
+  avoidNodes,
+  onRouteChange,
   onSkip,
   onTogglePause,
   onReplay,
@@ -208,6 +221,37 @@ function RouteTimeline({
         </button>
 
         <div className="min-w-0 flex-1">
+          {routeCount > 1 ? (
+            <div className="mb-3 flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => onRouteChange(routeIndex - 1)}
+                disabled={routeIndex <= 0}
+                aria-label="Previous alternative route"
+                title="Previous route"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m15 6-6 6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-white/62">
+                Route {routeIndex + 1} of {routeCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRouteChange(routeIndex + 1)}
+                disabled={routeIndex >= routeCount - 1}
+                aria-label="Next alternative route"
+                title="Next route"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
           <div className="mb-5 text-center">
             <p className="text-base font-medium text-white">Step</p>
             <p className="mt-2 text-2xl font-semibold text-white">
@@ -215,7 +259,12 @@ function RouteTimeline({
             </p>
             {hasDistance ? (
               <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/45">
-                Shortest route · {distance} unit{distance === 1 ? '' : 's'}
+                {pathLength} stop{pathLength === 1 ? '' : 's'} · {distance} unit{distance === 1 ? '' : 's'}
+              </p>
+            ) : null}
+            {avoidNodes.length > 0 ? (
+              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-red-300/90">
+                Skipping {avoidNodes.map(getNodeLabel).join(', ')}
               </p>
             ) : null}
           </div>
@@ -404,17 +453,22 @@ interface MapViewProps {
   distance: number;
   canAnimate: boolean;
   isPaused: boolean;
+  routeIndex: number;
+  routeCount: number;
   aiPrompt: string;
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
+  isShareCopied: boolean;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
+  onRouteChange: (routeIndex: number) => void;
   onAiPromptChange: (value: string) => void;
   onAiSubmit: () => void;
   onStartRoute: () => void;
   onMinimize: () => void;
   onExpand: () => void;
+  onShareLink: () => void;
   onSkip: () => void;
   onTogglePause: () => void;
   onReplay: () => void;
@@ -439,17 +493,22 @@ function MapView({
   distance,
   canAnimate,
   isPaused,
+  routeIndex,
+  routeCount,
   aiPrompt,
   aiParseState,
   aiFeedback,
+  isShareCopied,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
+  onRouteChange,
   onAiPromptChange,
   onAiSubmit,
   onStartRoute,
   onMinimize,
   onExpand,
+  onShareLink,
   onSkip,
   onTogglePause,
   onReplay,
@@ -482,9 +541,11 @@ function MapView({
           origin={origin}
           destination={destination}
           routeError={routeError}
+          routePath={routePath}
           aiPrompt={aiPrompt}
           aiParseState={aiParseState}
           aiFeedback={aiFeedback}
+          isShareCopied={isShareCopied}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
           onSwapRoute={onSwapRoute}
@@ -492,6 +553,7 @@ function MapView({
           onAiSubmit={onAiSubmit}
           onStartRoute={onStartRoute}
           onMinimize={onMinimize}
+          onShareLink={onShareLink}
           canAnimate={canAnimate}
         />
       )}
@@ -510,6 +572,11 @@ function MapView({
         totalSteps={totalSteps}
         distance={distance}
         isPaused={isPaused}
+        routeIndex={routeIndex}
+        routeCount={routeCount}
+        pathLength={routePath.length}
+        avoidNodes={avoidNodes}
+        onRouteChange={onRouteChange}
         onSkip={onSkip}
         onTogglePause={onTogglePause}
         onReplay={onReplay}
@@ -523,9 +590,11 @@ interface ControlPanelProps {
   origin: string;
   destination: string;
   routeError: string | null;
+  routePath: string[];
   aiPrompt: string;
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
+  isShareCopied: boolean;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -533,6 +602,7 @@ interface ControlPanelProps {
   onAiSubmit: () => void;
   onStartRoute: () => void;
   onMinimize: () => void;
+  onShareLink: () => void;
   canAnimate: boolean;
 }
 
@@ -540,9 +610,11 @@ function ControlPanel({
   origin,
   destination,
   routeError,
+  routePath,
   aiPrompt,
   aiParseState,
   aiFeedback,
+  isShareCopied,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -550,8 +622,11 @@ function ControlPanel({
   onAiSubmit,
   onStartRoute,
   onMinimize,
+  onShareLink,
   canAnimate,
 }: ControlPanelProps) {
+  const directions = useMemo(() => buildDirections(routePath, CAMPUS_EDGES), [routePath]);
+
   return (
     <section className="pointer-events-auto absolute left-3 top-7 z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
       <button
@@ -655,6 +730,30 @@ function ControlPanel({
         </div>
       </div>
 
+      {directions.length > 0 ? (
+        <details className="mt-6 rounded-md border border-white/10 bg-white/[0.035] p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-white/90">
+            Turn-by-turn directions
+          </summary>
+          <ol className="mt-3 space-y-2 text-sm leading-6 text-white/78">
+            {directions.map((leg) => (
+              <li key={leg.index} className="flex items-start gap-2">
+                <span
+                  className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: THEME.primaryAccent }}
+                />
+                <span>
+                  <span className="font-medium text-white">
+                    {getNodeLabel(leg.from)} → {getNodeLabel(leg.to)}
+                  </span>{' '}
+                  · {leg.distance} unit{leg.distance === 1 ? '' : 's'} · {leg.cumulativeDistance} total
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+
       <button
         type="button"
         onClick={onStartRoute}
@@ -666,6 +765,36 @@ function ControlPanel({
         <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
+      </button>
+
+      <button
+        type="button"
+        onClick={onShareLink}
+        className="mt-4 flex h-12 w-full items-center justify-center gap-3 rounded-md border border-white/18 bg-black/18 px-5 text-sm font-semibold text-white transition-colors hover:border-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-[#54F6BA]/70"
+      >
+        {isShareCopied ? (
+          <svg className="h-5 w-5 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m5 13 4 4L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M10.5 13.5a5 5 0 0 0 7.5 1l2-2a5 5 0 0 0-7.07-7.07L11 6.95"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M13.5 10.5a5 5 0 0 0-7.5-1l-2 2a5 5 0 0 0 7.07 7.07l1.53-1.02"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+        {isShareCopied ? 'Link copied!' : 'Copy route link'}
       </button>
 
       <div className="mt-6 rounded-md border border-white/10 bg-white/[0.035] p-5">
@@ -729,10 +858,46 @@ export function Dashboard() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiParseState, setAiParseState] = useState<AiParseState>('idle');
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+  const [isShareCopied, setIsShareCopied] = useState(false);
 
-  const routeResult = useMemo(() => {
-    return dijkstra(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes);
+  const routeCandidates = useMemo(() => {
+    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
   }, [currentOrigin, currentDestination, avoidNodes]);
+
+  useEffect(() => {
+    setSelectedRouteIndex(0);
+  }, [currentOrigin, currentDestination, avoidNodes]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('origin', currentOrigin);
+    url.searchParams.set('destination', currentDestination);
+
+    if (avoidNodes.length === 0) {
+      url.searchParams.delete('avoid');
+    } else {
+      url.searchParams.set('avoid', avoidNodes.join(','));
+    }
+
+    url.searchParams.delete('panel');
+    if (isPanelMinimized) {
+      url.searchParams.set('panel', 'minimized');
+    }
+
+    window.history.replaceState(null, '', url.toString());
+  }, [avoidNodes, currentDestination, currentOrigin, isPanelMinimized]);
+
+  const safeRouteIndex = Math.min(selectedRouteIndex, Math.max(routeCandidates.length - 1, 0));
+  const routeResult: RoutingResult = routeCandidates[safeRouteIndex] ?? {
+    path: [],
+    distance: Number.POSITIVE_INFINITY,
+    error: UNREACHABLE_ERROR,
+  };
 
   const calculatedRoutePath = routeResult.path;
   const calculatedDistance = routeResult.distance;
@@ -740,7 +905,7 @@ export function Dashboard() {
   const totalSteps = getTimelineStepCount(calculatedDistance, calculatedRoutePath.length);
   const sceneStepIndex = getSceneStepIndex(timelineStep, totalSteps, calculatedRoutePath.length);
   const canAnimate = calculatedRoutePath.length > 1 && !routeError;
-  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}`;
+  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}`;
 
   useEffect(() => {
     setTimelineStep(1);
@@ -793,29 +958,31 @@ export function Dashboard() {
     setAiFeedback(null);
 
     const parsed = await parseNavigationRequest(query);
+
+    let nextOrigin = parsed.origin ?? currentOrigin;
+    let nextDestination = parsed.destination ?? currentDestination;
+
+    if (nextOrigin === nextDestination) {
+      if (parsed.destination && !parsed.origin) {
+        nextOrigin = CAMPUS_NODES.find((node) => node.name !== nextDestination)?.name ?? nextOrigin;
+      } else {
+        nextDestination = CAMPUS_NODES.find((node) => node.name !== nextOrigin)?.name ?? nextDestination;
+      }
+    }
+
     const changes: string[] = [];
 
     if (parsed.origin) {
-      setCurrentOrigin(parsed.origin);
-      changes.push(`start at ${getNodeLabel(parsed.origin)}`);
+      changes.push(`start at ${getNodeLabel(nextOrigin)}`);
     }
 
     if (parsed.destination) {
-      setCurrentDestination(parsed.destination);
-      changes.push(`end at ${getNodeLabel(parsed.destination)}`);
+      changes.push(`end at ${getNodeLabel(nextDestination)}`);
     }
 
+    setCurrentOrigin(nextOrigin);
+    setCurrentDestination(nextDestination);
     setAvoidNodes(parsed.avoid_nodes);
-
-    if (currentOrigin === parsed.destination && parsed.origin && parsed.origin !== parsed.destination) {
-      const nextOrigin = CAMPUS_NODES.find((node) => node.name !== parsed.destination)?.name ?? '';
-      setCurrentOrigin(nextOrigin);
-    }
-
-    if (currentDestination === parsed.origin && parsed.destination && parsed.origin !== parsed.destination) {
-      const nextDestination = CAMPUS_NODES.find((node) => node.name !== parsed.origin)?.name ?? '';
-      setCurrentDestination(nextDestination);
-    }
 
     const avoidedLabel = parsed.avoid_nodes.map(getNodeLabel).join(', ');
 
@@ -838,6 +1005,37 @@ export function Dashboard() {
   function handleSwapRoute() {
     setCurrentOrigin(currentDestination);
     setCurrentDestination(currentOrigin);
+  }
+
+  function handleShareLink() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const shareUrl = buildShareUrl(window.location.href, {
+      origin: currentOrigin,
+      destination: currentDestination,
+      avoidNodes,
+    });
+
+    const confirmCopy = () => {
+      setIsShareCopied(true);
+      window.setTimeout(() => setIsShareCopied(false), 2500);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(confirmCopy, () => {
+        setAiFeedback({
+          message: 'Could not copy the link. The current route is reflected in the address bar.',
+          tone: 'error',
+        });
+      });
+    } else {
+      setAiFeedback({
+        message: 'Clipboard is unavailable. The current route is reflected in the address bar.',
+        tone: 'error',
+      });
+    }
   }
 
   function handleTogglePause() {
@@ -903,18 +1101,23 @@ export function Dashboard() {
     distance: calculatedDistance,
     canAnimate,
     isPaused: !isAnimationRunning,
+    routeIndex: safeRouteIndex,
+    routeCount: routeCandidates.length,
     aiPrompt,
     aiParseState,
     aiFeedback,
+    isShareCopied,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
     onSwapRoute: handleSwapRoute,
+    onRouteChange: setSelectedRouteIndex,
     onTogglePause: handleTogglePause,
     onAiPromptChange: setAiPrompt,
     onAiSubmit: handleAiSubmit,
     onStartRoute: handleStartRoute,
     onMinimize: () => setIsPanelMinimized(true),
     onExpand: () => setIsPanelMinimized(false),
+    onShareLink: handleShareLink,
     onSkip: handleSkipAnimation,
     onReplay: handleStartRoute,
     onZoomIn: handleZoomIn,
