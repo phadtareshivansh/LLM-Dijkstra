@@ -389,9 +389,10 @@ export function RouteScene3D({
 }: RouteScene3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphGroupRef = useRef<THREE.Group | null>(null);
+  const staticLayerGroupRef = useRef<THREE.Group | null>(null);
+  const routeLayerGroupRef = useRef<THREE.Group | null>(null);
   const markerRef = useRef<THREE.Mesh | null>(null);
   const [isRendererUnavailable, setIsRendererUnavailable] = useState(false);
-  const routeSignature = `${activePath.join('|')}::${avoidNodes.join('|')}::${stepIndex}`;
 
   const sceneState = useMemo(() => {
     const activeEdges = buildActiveEdgeSet(activePath, stepIndex);
@@ -458,6 +459,14 @@ export function RouteScene3D({
     const graphGroup = new THREE.Group();
     graphGroupRef.current = graphGroup;
     scene.add(graphGroup);
+
+    const staticLayer = new THREE.Group();
+    staticLayerGroupRef.current = staticLayer;
+    graphGroup.add(staticLayer);
+
+    const routeLayer = new THREE.Group();
+    routeLayerGroupRef.current = routeLayer;
+    graphGroup.add(routeLayer);
 
     const grid = new THREE.GridHelper(28, 28, '#1ED99A', '#17332D');
     grid.position.y = -0.02;
@@ -528,22 +537,27 @@ export function RouteScene3D({
       renderer.dispose();
       renderer.domElement.remove();
       graphGroupRef.current = null;
+      staticLayerGroupRef.current = null;
+      routeLayerGroupRef.current = null;
       markerRef.current = null;
     };
   }, [isRendererUnavailable, isThreeDimensional, variant, zoomLevel]);
 
   useEffect(() => {
-    const graphGroup = graphGroupRef.current;
+    const graphGroup = staticLayerGroupRef.current;
     if (!graphGroup) {
       return;
     }
 
     clearGroup(graphGroup);
-    markerRef.current = null;
 
-    const nodeMap = new Map(nodes.map((node) => [node.name, node]));
-    const visiblePath = getVisiblePath(activePath, stepIndex);
-    const activeNodes = new Set(visiblePath);
+    const nodePointMap = new Map(nodes.map((node) => [node.name, getScenePoint(node, variant)]));
+
+    const isNearNode = (point: { x: number; y: number }) =>
+      Array.from(nodePointMap.values()).some(
+        (nodePoint) => Math.abs(nodePoint.x - point.x) < 3 && Math.abs(nodePoint.y - point.y) < 3
+      );
+
     const roadDeckMaterial = new THREE.MeshBasicMaterial({
       color: '#D5DEE0',
       transparent: true,
@@ -610,19 +624,40 @@ export function RouteScene3D({
     }
 
     for (const point of CAMPUS_MAP_POINTS) {
-      const isNearRoute = visiblePath.some((nodeName) => {
-        const routePoint = VISUAL_NODE_POINTS[nodeName];
-        if (!routePoint) {
-          return false;
-        }
-
-        return Math.abs(routePoint.x - point.x) < 3 && Math.abs(routePoint.y - point.y) < 3;
-      });
-
-      if (!isNearRoute) {
+      if (!isNearNode(point)) {
         graphGroup.add(createNodeHub(getWorldPosition(point, 0.07), false, false));
       }
     }
+
+    for (const edge of edges) {
+      const fromPoint = nodePointMap.get(edge.from);
+      const toPoint = nodePointMap.get(edge.to);
+
+      if (!fromPoint || !toPoint) {
+        continue;
+      }
+
+      const segment = createRouteGlow(
+        getWorldPosition(fromPoint, 0.12),
+        getWorldPosition(toPoint, 0.12),
+        false
+      );
+      graphGroup.add(segment);
+    }
+  }, [isRendererUnavailable, nodes, edges, variant]);
+
+  useEffect(() => {
+    const routeLayer = routeLayerGroupRef.current;
+    if (!routeLayer) {
+      return;
+    }
+
+    clearGroup(routeLayer);
+    markerRef.current = null;
+
+    const nodeMap = new Map(nodes.map((node) => [node.name, node]));
+    const visiblePath = getVisiblePath(activePath, stepIndex);
+    const activeNodes = new Set(visiblePath);
 
     for (const edge of edges) {
       const fromNode = nodeMap.get(edge.from);
@@ -632,19 +667,22 @@ export function RouteScene3D({
         continue;
       }
 
-      const isActive = sceneState.activeEdges.has(`${edge.from}->${edge.to}`);
+      if (!sceneState.activeEdges.has(`${edge.from}->${edge.to}`)) {
+        continue;
+      }
+
       const segment = createRouteGlow(
-        getNodePosition(fromNode, variant, isActive ? 0.22 : 0.12),
-        getNodePosition(toNode, variant, isActive ? 0.22 : 0.12),
-        isActive
+        getNodePosition(fromNode, variant, 0.22),
+        getNodePosition(toNode, variant, 0.22),
+        true
       );
-      graphGroup.add(segment);
+      routeLayer.add(segment);
     }
 
     for (const node of nodes) {
       const isActive = activeNodes.has(node.name);
       const isAvoided = sceneState.avoidNodeSet.has(node.name);
-      graphGroup.add(createNodeHub(getNodePosition(node, variant, 0.08), isActive, isAvoided));
+      routeLayer.add(createNodeHub(getNodePosition(node, variant, 0.08), isActive, isAvoided));
     }
 
     const currentNode = sceneState.currentNode ? nodeMap.get(sceneState.currentNode) : undefined;
@@ -660,7 +698,7 @@ export function RouteScene3D({
       const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), markerMaterial);
       marker.position.copy(getNodePosition(currentNode, variant, 0.92));
       markerRef.current = marker;
-      graphGroup.add(marker);
+      routeLayer.add(marker);
     }
 
     const destinationNode = activePath.length > 0 ? nodeMap.get(activePath[activePath.length - 1]) : undefined;
@@ -692,9 +730,9 @@ export function RouteScene3D({
       pinGroup.add(pinHead, pinTail);
       pinGroup.position.copy(destinationPosition);
       pinGroup.castShadow = true;
-      graphGroup.add(pinGroup);
+      routeLayer.add(pinGroup);
     }
-  }, [nodes, edges, routeSignature, activePath, stepIndex, sceneState, variant]);
+  }, [isRendererUnavailable, nodes, edges, activePath, avoidNodes, stepIndex, sceneState, variant]);
 
   const currentStepLabel =
     activePath.length > 0 ? `Step ${Math.min(stepIndex + 1, activePath.length)} of ${activePath.length}` : 'Preview';
