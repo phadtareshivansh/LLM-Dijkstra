@@ -2,6 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Edge, Node, THEME } from './themeConstants';
 
+export interface TraceStepSceneState {
+  step: number;
+  totalSteps: number;
+  currentSettledNode: string | null;
+  settledNodes: string[];
+  frontierNodes: string[];
+  relaxedEdges: string[];
+  finished: boolean;
+}
+
 export interface RouteScene3DProps {
   nodes: Node[];
   edges: Edge[];
@@ -12,6 +22,9 @@ export interface RouteScene3DProps {
   isThreeDimensional?: boolean;
   variant?: 'framed' | 'background';
   showHud?: boolean;
+  traceState?: TraceStepSceneState | null;
+  traceEndpoints?: string[];
+  showWeightLabels?: boolean;
 }
 
 const WORLD_WIDTH = 22;
@@ -19,6 +32,7 @@ const WORLD_DEPTH = 14.5;
 const PRIMARY_COLOR = new THREE.Color(THEME.primaryAccent);
 const BASE_LINE_COLOR = new THREE.Color('#52606D');
 const AVOID_COLOR = new THREE.Color('#EF4444');
+const TRACE_COLOR = new THREE.Color('#38BDF8');
 const CAMPUS_BUILDINGS = [
   { x: 38, y: 13, width: 15, height: 10, rotate: -4, windows: 10 },
   { x: 74, y: 12, width: 15, height: 12, rotate: 4, windows: 12 },
@@ -303,24 +317,31 @@ function createTree(tree: { x: number; y: number }): THREE.Group {
   return group;
 }
 
-function createNodeHub(position: THREE.Vector3, active: boolean, avoided: boolean): THREE.Group {
+function createNodeHub(position: THREE.Vector3, active: boolean, avoided: boolean, frontier = false): THREE.Group {
   const group = new THREE.Group();
   const ringMaterial = new THREE.MeshStandardMaterial({
-    color: avoided ? '#7F1D1D' : active ? THEME.primaryAccent : '#1A252B',
-    emissive: avoided ? '#7F1D1D' : active ? THEME.primaryAccent : '#020B0D',
-    emissiveIntensity: active ? 1.9 : 0.15,
+    color: avoided ? '#7F1D1D' : frontier ? '#0C4A6E' : active ? THEME.primaryAccent : '#1A252B',
+    emissive: avoided ? '#7F1D1D' : frontier ? '#38BDF8' : active ? THEME.primaryAccent : '#020B0D',
+    emissiveIntensity: active ? 1.9 : frontier ? 1.1 : 0.15,
     roughness: 0.35,
     metalness: 0.12,
   });
   const capMaterial = new THREE.MeshStandardMaterial({
-    color: active ? '#DFFFEF' : '#D7E3E6',
-    emissive: active ? THEME.primaryAccent : '#000000',
-    emissiveIntensity: active ? 0.9 : 0,
+    color: active ? '#DFFFEF' : frontier ? '#E0F2FE' : '#D7E3E6',
+    emissive: active ? THEME.primaryAccent : frontier ? '#0EA5E9' : '#000000',
+    emissiveIntensity: active ? 0.9 : frontier ? 0.55 : 0,
     roughness: 0.2,
     metalness: 0.35,
   });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(active ? 0.42 : 0.3, active ? 0.42 : 0.3, 0.15, 28), ringMaterial);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(active ? 0.25 : 0.17, active ? 0.25 : 0.17, 0.055, 28), capMaterial);
+  const isExpanded = active || frontier;
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(isExpanded ? 0.42 : 0.3, isExpanded ? 0.42 : 0.3, 0.15, 28),
+    ringMaterial
+  );
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(isExpanded ? 0.25 : 0.17, isExpanded ? 0.25 : 0.17, 0.055, 28),
+    capMaterial
+  );
   base.position.y = 0.08;
   cap.position.y = 0.18;
   base.castShadow = true;
@@ -330,15 +351,15 @@ function createNodeHub(position: THREE.Vector3, active: boolean, avoided: boolea
   return group;
 }
 
-function createRouteGlow(start: THREE.Vector3, end: THREE.Vector3, active: boolean): THREE.Group {
+function createRouteGlow(start: THREE.Vector3, end: THREE.Vector3, active: boolean, color = PRIMARY_COLOR): THREE.Group {
   const group = new THREE.Group();
   const glowMaterial = new THREE.MeshBasicMaterial({
-    color: THEME.primaryAccent,
+    color,
     transparent: true,
     opacity: active ? 0.46 : 0.05,
   });
   const coreMaterial = active
-    ? new THREE.MeshBasicMaterial({ color: THEME.primaryAccent })
+    ? new THREE.MeshBasicMaterial({ color })
     : new THREE.MeshStandardMaterial({
         color: '#91A0A6',
         emissive: '#050B0E',
@@ -386,6 +407,9 @@ export function RouteScene3D({
   isThreeDimensional = true,
   variant = 'framed',
   showHud = true,
+  traceState = null,
+  traceEndpoints = [],
+  showWeightLabels = false,
 }: RouteScene3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphGroupRef = useRef<THREE.Group | null>(null);
@@ -403,6 +427,24 @@ export function RouteScene3D({
 
     return { activeEdges, activeNodeSet, currentNode, avoidNodeSet };
   }, [activePath, avoidNodes, stepIndex]);
+
+  const traceSceneState = useMemo(() => {
+    const relaxedEdges = new Set<string>();
+
+    for (const key of traceState?.relaxedEdges ?? []) {
+      const [from, to] = key.split('->');
+      if (from && to) {
+        relaxedEdges.add(`${from}->${to}`);
+        relaxedEdges.add(`${to}->${from}`);
+      }
+    }
+
+    return {
+      settledNodes: new Set(traceState?.settledNodes ?? []),
+      frontierNodes: new Set(traceState?.frontierNodes ?? []),
+      relaxedEdges,
+    };
+  }, [traceState]);
 
   useEffect(() => {
     if (isRendererUnavailable) {
@@ -667,30 +709,37 @@ export function RouteScene3D({
         continue;
       }
 
-      if (!sceneState.activeEdges.has(`${edge.from}->${edge.to}`)) {
+      const edgeKey = `${edge.from}->${edge.to}`;
+      const isActiveEdge = sceneState.activeEdges.has(edgeKey);
+      const isTraceRelaxedEdge = traceSceneState.relaxedEdges.has(edgeKey);
+
+      if (!isActiveEdge && !isTraceRelaxedEdge) {
         continue;
       }
 
       const segment = createRouteGlow(
         getNodePosition(fromNode, variant, 0.22),
         getNodePosition(toNode, variant, 0.22),
-        true
+        true,
+        isTraceRelaxedEdge ? TRACE_COLOR : PRIMARY_COLOR
       );
       routeLayer.add(segment);
     }
 
     for (const node of nodes) {
-      const isActive = activeNodes.has(node.name);
+      const isActive = activeNodes.has(node.name) || traceSceneState.settledNodes.has(node.name);
       const isAvoided = sceneState.avoidNodeSet.has(node.name);
-      routeLayer.add(createNodeHub(getNodePosition(node, variant, 0.08), isActive, isAvoided));
+      const isFrontier = traceSceneState.frontierNodes.has(node.name);
+      routeLayer.add(createNodeHub(getNodePosition(node, variant, 0.08), isActive, isAvoided, isFrontier));
     }
 
-    const currentNode = sceneState.currentNode ? nodeMap.get(sceneState.currentNode) : undefined;
+    const markerNodeName = sceneState.currentNode ?? traceState?.currentSettledNode ?? null;
+    const currentNode = markerNodeName ? nodeMap.get(markerNodeName) : undefined;
 
     if (currentNode) {
       const markerMaterial = new THREE.MeshStandardMaterial({
         color: '#FFFFFF',
-        emissive: PRIMARY_COLOR,
+        emissive: traceState ? TRACE_COLOR : PRIMARY_COLOR,
         emissiveIntensity: 2.4,
         metalness: 0.2,
         roughness: 0.18,
@@ -701,7 +750,9 @@ export function RouteScene3D({
       routeLayer.add(marker);
     }
 
-    const destinationNode = activePath.length > 0 ? nodeMap.get(activePath[activePath.length - 1]) : undefined;
+    const destinationName =
+      activePath.length > 0 ? activePath[activePath.length - 1] : traceEndpoints[traceEndpoints.length - 1];
+    const destinationNode = destinationName ? nodeMap.get(destinationName) : undefined;
 
     if (destinationNode && variant === 'background') {
       const destinationPosition = getNodePosition(destinationNode, variant, 1.1);
@@ -732,11 +783,14 @@ export function RouteScene3D({
       pinGroup.castShadow = true;
       routeLayer.add(pinGroup);
     }
-  }, [isRendererUnavailable, nodes, edges, activePath, avoidNodes, stepIndex, sceneState, variant]);
+  }, [isRendererUnavailable, nodes, edges, activePath, avoidNodes, stepIndex, sceneState, traceSceneState, traceState, traceEndpoints, variant]);
 
   const currentStepLabel =
     activePath.length > 0 ? `Step ${Math.min(stepIndex + 1, activePath.length)} of ${activePath.length}` : 'Preview';
-  const routeEndpoints = new Set(activePath.length > 0 ? [activePath[0], activePath[activePath.length - 1]] : []);
+  const routeEndpoints = new Set([
+    ...(activePath.length > 0 ? [activePath[0], activePath[activePath.length - 1]] : []),
+    ...traceEndpoints,
+  ]);
   const zoomedLayerStyle = {
     transform: `scale(${zoomLevel})`,
     transformOrigin: '58% 46%',
@@ -898,6 +952,9 @@ export function RouteScene3D({
             }
 
             const isActive = sceneState.activeEdges.has(`${edge.from}->${edge.to}`);
+            const isTraceRelaxed = traceSceneState.relaxedEdges.has(`${edge.from}->${edge.to}`);
+            const edgeTone = isActive || isTraceRelaxed;
+            const edgeColor = isTraceRelaxed ? 'rgba(56,189,248,0.85)' : THEME.primaryAccent;
             const fromPoint = getScenePoint(fromNode, variant);
             const toPoint = getScenePoint(toNode, variant);
 
@@ -908,28 +965,30 @@ export function RouteScene3D({
                   y1={fromPoint.y}
                   x2={toPoint.x}
                   y2={toPoint.y}
-                  stroke={isActive ? 'rgba(0,255,157,0.22)' : 'rgba(255,255,255,0.08)'}
-                  strokeWidth={isActive ? 5.3 : 1.2}
+                  stroke={edgeTone ? 'rgba(0,255,157,0.22)' : 'rgba(255,255,255,0.08)'}
+                  strokeWidth={edgeTone ? 5.3 : 1.2}
                   strokeLinecap="round"
                 />
                 <line
-                  className={isActive ? 'route-segment-active' : undefined}
+                  className={edgeTone ? 'route-segment-active' : undefined}
                   x1={fromPoint.x}
                   y1={fromPoint.y}
                   x2={toPoint.x}
                   y2={toPoint.y}
-                  stroke={isActive ? THEME.primaryAccent : 'rgba(255,255,255,0.26)'}
-                  strokeWidth={isActive ? 2.2 : 0.55}
+                  stroke={edgeTone ? edgeColor : 'rgba(255,255,255,0.26)'}
+                  strokeWidth={edgeTone ? 2.2 : 0.55}
                   strokeLinecap="round"
-                  filter={isActive ? 'url(#routeGlow)' : undefined}
+                  filter={edgeTone ? 'url(#routeGlow)' : undefined}
                 />
               </g>
             );
           })}
 
           {nodes.map((node) => {
-            const isActive = sceneState.activeNodeSet.has(node.name);
-            const isCurrent = sceneState.currentNode === node.name;
+            const isActive = sceneState.activeNodeSet.has(node.name) || traceSceneState.settledNodes.has(node.name);
+            const isCurrent =
+              (sceneState.currentNode ?? traceState?.currentSettledNode) === node.name;
+            const isFrontier = traceSceneState.frontierNodes.has(node.name);
             const isAvoided = sceneState.avoidNodeSet.has(node.name);
             const isDestination = variant === 'background' && activePath[activePath.length - 1] === node.name;
             const point = getScenePoint(node, variant);
@@ -952,21 +1011,31 @@ export function RouteScene3D({
                 <circle
                   cx={point.x}
                   cy={point.y}
-                  r={isCurrent ? 3.6 : isActive ? 2.8 : 1.8}
+                  r={isCurrent ? 3.6 : isActive || isFrontier ? 2.8 : 1.8}
                   fill={
                     isAvoided
                       ? 'rgba(248,113,113,0.26)'
-                      : isActive
-                        ? 'rgba(0,255,157,0.22)'
-                        : 'rgba(255,255,255,0.12)'
+                      : isCurrent
+                        ? 'rgba(56,189,248,0.2)'
+                        : isActive
+                          ? 'rgba(0,255,157,0.22)'
+                          : isFrontier
+                            ? 'rgba(56,189,248,0.18)'
+                            : 'rgba(255,255,255,0.12)'
                   }
                 />
                 <circle
                   className={isCurrent ? 'route-node-current' : undefined}
                   cx={point.x}
                   cy={point.y}
-                  r={isCurrent ? 1.8 : isActive ? 1.45 : 1.05}
-                  fill={isAvoided ? '#F87171' : isActive ? THEME.primaryAccent : '#E5EEF2'}
+                  r={isCurrent ? 1.8 : isActive ? 1.45 : isFrontier ? 1.3 : 1.05}
+                  fill={
+                    isAvoided ? '#F87171'
+                    : isCurrent ? '#38BDF8'
+                    : isFrontier ? '#38BDF8'
+                    : isActive ? THEME.primaryAccent
+                    : '#E5EEF2'
+                  }
                 />
               </g>
             );
@@ -976,12 +1045,14 @@ export function RouteScene3D({
 
       <div className="pointer-events-none absolute inset-0 z-30" style={zoomedLayerStyle}>
         {nodes.map((node) => {
-          const isActive = sceneState.activeNodeSet.has(node.name);
-          const isCurrent = sceneState.currentNode === node.name;
+          const isActive =
+            sceneState.activeNodeSet.has(node.name) || traceSceneState.settledNodes.has(node.name);
+          const isCurrent = (sceneState.currentNode ?? traceState?.currentSettledNode) === node.name;
+          const isFrontier = traceSceneState.frontierNodes.has(node.name);
           const isAvoided = sceneState.avoidNodeSet.has(node.name);
           const point = getLabelPoint(node, variant, activePath);
           const shouldShowLabel =
-            variant !== 'background' || routeEndpoints.has(node.name) || isCurrent || isAvoided;
+            variant !== 'background' || routeEndpoints.has(node.name) || isCurrent || isAvoided || isFrontier;
 
           if (!shouldShowLabel) {
             return null;
@@ -998,14 +1069,18 @@ export function RouteScene3D({
                 borderColor: isAvoided
                   ? 'rgba(248, 113, 113, 0.55)'
                   : isCurrent
-                    ? `${THEME.primaryAccent}CC`
-                    : 'rgba(255, 255, 255, 0.14)',
+                    ? 'rgba(56,189,248,0.8)'
+                    : isActive
+                      ? `${THEME.primaryAccent}66`
+                      : 'rgba(255, 255, 255, 0.14)',
                 backgroundColor: isAvoided
                   ? 'rgba(127, 29, 29, 0.72)'
                   : isActive
                     ? 'rgba(0, 255, 157, 0.18)'
-                    : 'rgba(3, 12, 9, 0.76)',
-                boxShadow: isCurrent ? `0 0 26px ${THEME.primaryAccent}88` : 'none',
+                    : isFrontier
+                      ? 'rgba(14, 116, 144, 0.72)'
+                      : 'rgba(3, 12, 9, 0.76)',
+                boxShadow: isCurrent ? '0 0 26px rgba(56,189,248,0.55)' : 'none',
                 color: isActive || isCurrent ? '#E9FFF6' : 'rgba(255, 255, 255, 0.84)',
               }}
             >
@@ -1014,6 +1089,43 @@ export function RouteScene3D({
           );
         })}
       </div>
+
+      {showWeightLabels ? (
+        <div className="pointer-events-none absolute inset-0 z-30" style={zoomedLayerStyle}>
+          {edges.map((edge) => {
+            const fromNode = nodes.find((node) => node.name === edge.from);
+            const toNode = nodes.find((node) => node.name === edge.to);
+
+            if (!fromNode || !toNode) {
+              return null;
+            }
+
+            const fromPoint = getScenePoint(fromNode, variant);
+            const toPoint = getScenePoint(toNode, variant);
+            const isRelaxed = traceSceneState.relaxedEdges.has(`${edge.from}->${edge.to}`);
+            const midX = (fromPoint.x + toPoint.x) / 2;
+            const midY = (fromPoint.y + toPoint.y) / 2;
+
+            return (
+              <span
+                key={`${edge.from}-${edge.to}`}
+                className="absolute rounded-full border px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+                style={{
+                  left: `${midX}%`,
+                  top: `${midY}%`,
+                  transform: 'translate(-50%, -50%)',
+                  borderColor: isRelaxed ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.16)',
+                  backgroundColor: isRelaxed ? 'rgba(14,116,144,0.85)' : 'rgba(3,12,9,0.82)',
+                  color: isRelaxed ? '#BAE6FD' : 'rgba(255,255,255,0.72)',
+                  boxShadow: isRelaxed ? `0 0 14px rgba(56,189,248,0.45)` : 'none',
+                }}
+              >
+                {edge.weight}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
 
       {showHud ? (
         <div className="pointer-events-none absolute bottom-5 left-5 right-5 z-30 flex flex-wrap items-end justify-between gap-3">

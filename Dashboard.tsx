@@ -1,13 +1,15 @@
 import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
-import RouteScene3D from './RouteScene3D';
+import RouteScene3D, { TraceStepSceneState } from './RouteScene3D';
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
-import { RoutingResult, UNREACHABLE_ERROR } from './routingEngine';
+import { RoutingResult, UNREACHABLE_ERROR, dijkstraTrace } from './routingEngine';
 import { kShortestPaths } from './kShortestPaths';
 import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
 import { parseNavigationRequest } from './parseNavigationRequest';
+import { TraceLogEntry, describeTraceStep } from './traceLog';
 
 type AiParseState = 'idle' | 'parsing';
+type ViewMode = 'path' | 'dijkstra';
 
 interface AiFeedback {
   message: string;
@@ -459,6 +461,12 @@ interface MapViewProps {
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
   isShareCopied: boolean;
+  viewMode: ViewMode;
+  showEdgeWeights: boolean;
+  traceState: TraceStepSceneState | null;
+  stepLog: TraceLogEntry[];
+  onViewModeChange: (mode: ViewMode) => void;
+  onToggleEdgeWeights: () => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -499,6 +507,12 @@ function MapView({
   aiParseState,
   aiFeedback,
   isShareCopied,
+  viewMode,
+  showEdgeWeights,
+  traceState,
+  stepLog,
+  onViewModeChange,
+  onToggleEdgeWeights,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -529,6 +543,9 @@ function MapView({
         isThreeDimensional={isThreeDimensional}
         variant="background"
         showHud={false}
+        traceState={traceState}
+        traceEndpoints={viewMode === 'dijkstra' ? [origin, destination] : undefined}
+        showWeightLabels={showEdgeWeights}
       />
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
@@ -546,6 +563,11 @@ function MapView({
           aiParseState={aiParseState}
           aiFeedback={aiFeedback}
           isShareCopied={isShareCopied}
+          viewMode={viewMode}
+          showEdgeWeights={showEdgeWeights}
+          stepLog={stepLog}
+          onViewModeChange={onViewModeChange}
+          onToggleEdgeWeights={onToggleEdgeWeights}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
           onSwapRoute={onSwapRoute}
@@ -595,6 +617,11 @@ interface ControlPanelProps {
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
   isShareCopied: boolean;
+  viewMode: ViewMode;
+  showEdgeWeights: boolean;
+  stepLog: TraceLogEntry[];
+  onViewModeChange: (mode: ViewMode) => void;
+  onToggleEdgeWeights: () => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -615,6 +642,11 @@ function ControlPanel({
   aiParseState,
   aiFeedback,
   isShareCopied,
+  viewMode,
+  showEdgeWeights,
+  stepLog,
+  onViewModeChange,
+  onToggleEdgeWeights,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -675,6 +707,46 @@ function ControlPanel({
           blockedValue={origin}
           onChange={onDestinationChange}
         />
+
+        <div>
+          <span className="mb-2 block text-sm font-semibold text-white">View mode</span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onViewModeChange('path')}
+              aria-pressed={viewMode === 'path'}
+              className={`flex h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
+                viewMode === 'path'
+                  ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                  : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+              }`}
+            >
+              Route path
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewModeChange('dijkstra')}
+              aria-pressed={viewMode === 'dijkstra'}
+              className={`flex h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
+                viewMode === 'dijkstra'
+                  ? 'border-sky-300/55 bg-[#0B1920] text-[#38BDF8]'
+                  : 'border-white/14 bg-black/18 text-white/70 hover:border-sky-300/40'
+              }`}
+            >
+              Dijkstra trace
+            </button>
+          </div>
+          <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
+            <span>Show edge weights</span>
+            <input
+              type="checkbox"
+              checked={showEdgeWeights}
+              onChange={onToggleEdgeWeights}
+              className="h-4 w-4 cursor-pointer accent-[#54F6BA]"
+              aria-label="Show edge weights"
+            />
+          </label>
+        </div>
 
         <div>
           <label className="block">
@@ -754,6 +826,44 @@ function ControlPanel({
         </details>
       ) : null}
 
+      {viewMode === 'dijkstra' && stepLog.length > 0 ? (
+        <details className="mt-6 rounded-md border border-white/10 bg-white/[0.035] p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-white/90">
+            Algorithm step log
+          </summary>
+          <ol className="mt-3 max-h-64 space-y-2 overflow-y-auto text-xs leading-5 text-white/78">
+            {stepLog.map((entry) => {
+              const isCurrent = entry.step === stepLog[stepLog.length - 1].step;
+
+              return (
+                <li
+                  key={entry.step}
+                  className={`rounded-md border p-2 ${
+                    isCurrent ? 'border-sky-300/40 bg-sky-300/[0.08]' : 'border-white/8 bg-black/10'
+                  }`}
+                >
+                  <p className={`font-semibold ${isCurrent ? 'text-sky-100' : 'text-white/70'}`}>
+                    Step {entry.step + 1}: {entry.title}
+                  </p>
+                  {entry.lines.length > 0 ? (
+                    <ul className="mt-1 space-y-0.5 pl-3 font-mono">
+                      {entry.lines.map((line, lineIndex) => (
+                        <li
+                          key={lineIndex}
+                          className={line.includes('improved') ? 'text-emerald-100/85' : 'text-white/45'}
+                        >
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </details>
+      ) : null}
+
       <button
         type="button"
         onClick={onStartRoute}
@@ -761,7 +871,7 @@ function ControlPanel({
         className="mt-8 flex h-[58px] w-full items-center justify-center gap-5 rounded-md px-5 text-lg font-semibold text-[#031610] shadow-[0_0_30px_rgba(84,246,186,0.22)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
         style={{ background: 'linear-gradient(135deg, #54F6BA 0%, #35E9A8 100%)' }}
       >
-        Start route
+        {viewMode === 'dijkstra' ? 'Run trace' : 'Start route'}
         <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -860,6 +970,8 @@ export function Dashboard() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isShareCopied, setIsShareCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('path');
+  const [showEdgeWeights, setShowEdgeWeights] = useState(true);
 
   const routeCandidates = useMemo(() => {
     return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
@@ -905,29 +1017,103 @@ export function Dashboard() {
   const totalSteps = getTimelineStepCount(calculatedDistance, calculatedRoutePath.length);
   const sceneStepIndex = getSceneStepIndex(timelineStep, totalSteps, calculatedRoutePath.length);
   const canAnimate = calculatedRoutePath.length > 1 && !routeError;
-  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}`;
+
+  const traceResult = useMemo(() => {
+    return dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes);
+  }, [currentOrigin, currentDestination, avoidNodes]);
+
+  const traceTotalSteps = Math.max(traceResult.steps.length, 1);
+  const traceCurrentIndex = Math.min(timelineStep - 1, Math.max(traceResult.steps.length - 1, 0));
+  const traceCurrentStep = traceResult.steps[traceCurrentIndex] ?? null;
+  const traceFinished = traceCurrentStep?.finished ?? false;
+  const isDijkstraMode = viewMode === 'dijkstra';
+
+  const traceSceneState: TraceStepSceneState | null = useMemo(() => {
+    if (!isDijkstraMode || !traceCurrentStep || traceResult.error) {
+      return null;
+    }
+
+    const settledNodes: string[] = [];
+
+    for (let index = 0; index <= traceCurrentIndex; index += 1) {
+      const settledNode = traceResult.steps[index]?.settledNode;
+      if (settledNode) {
+        settledNodes.push(settledNode);
+      }
+    }
+
+    const settledSet = new Set(settledNodes);
+    const frontierNodes: string[] = [];
+
+    for (const [nodeName, distance] of traceCurrentStep.distanceByNode) {
+      if (Number.isFinite(distance) && !settledSet.has(nodeName)) {
+        frontierNodes.push(nodeName);
+      }
+    }
+
+    const relaxedEdges = traceCurrentStep.relaxations
+      .filter((relaxation) => relaxation.improved)
+      .map((relaxation) => `${relaxation.from}->${relaxation.to}`);
+
+    return {
+      step: traceCurrentStep.step,
+      totalSteps: traceTotalSteps,
+      currentSettledNode: traceCurrentStep.settledNode,
+      settledNodes,
+      frontierNodes,
+      relaxedEdges,
+      finished: traceCurrentStep.finished,
+    };
+  }, [isDijkstraMode, traceCurrentIndex, traceCurrentStep, traceResult, traceTotalSteps]);
+
+  const effectiveRoutePath = isDijkstraMode ? (traceFinished ? traceResult.path : []) : calculatedRoutePath;
+  const effectiveDistance = isDijkstraMode
+    ? !traceFinished || traceResult.error
+      ? Number.POSITIVE_INFINITY
+      : traceResult.distance
+    : calculatedDistance;
+  const effectiveTotalSteps = isDijkstraMode ? traceTotalSteps : totalSteps;
+  const effectiveSceneStepIndex = isDijkstraMode
+    ? traceFinished
+      ? traceResult.path.length
+      : 0
+    : sceneStepIndex;
+  const effectiveCanAnimate = isDijkstraMode
+    ? !traceResult.error && traceResult.steps.length > 1
+    : canAnimate;
+  const effectiveRouteError = isDijkstraMode ? (traceResult.error ?? null) : routeError;
+
+  const stepLog = useMemo(() => {
+    if (!isDijkstraMode) {
+      return [];
+    }
+
+    return traceResult.steps.slice(0, traceCurrentIndex + 1).map(describeTraceStep);
+  }, [isDijkstraMode, traceCurrentIndex, traceResult]);
+
+  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}|${viewMode}|${traceTotalSteps}`;
 
   useEffect(() => {
     setTimelineStep(1);
-    setIsAnimationRunning(canAnimate);
-  }, [routeSignature, canAnimate]);
+    setIsAnimationRunning(effectiveCanAnimate);
+  }, [routeSignature, effectiveCanAnimate]);
 
   useEffect(() => {
-    if (!isAnimationRunning || !canAnimate) {
+    if (!isAnimationRunning || !effectiveCanAnimate) {
       return undefined;
     }
 
-    if (timelineStep >= totalSteps) {
+    if (timelineStep >= effectiveTotalSteps) {
       setIsAnimationRunning(false);
       return undefined;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setTimelineStep((currentStep) => Math.min(currentStep + 1, totalSteps));
+      setTimelineStep((currentStep) => Math.min(currentStep + 1, effectiveTotalSteps));
     }, ROUTE_STEP_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [canAnimate, isAnimationRunning, timelineStep, totalSteps]);
+  }, [effectiveCanAnimate, effectiveTotalSteps, isAnimationRunning, timelineStep]);
 
   function handleOriginChange(value: string) {
     setCurrentOrigin(value);
@@ -1039,7 +1225,7 @@ export function Dashboard() {
   }
 
   function handleTogglePause() {
-    if (!canAnimate) {
+    if (!effectiveCanAnimate) {
       return;
     }
 
@@ -1048,11 +1234,11 @@ export function Dashboard() {
       return;
     }
 
-    setIsAnimationRunning(timelineStep < totalSteps);
+    setIsAnimationRunning(timelineStep < effectiveTotalSteps);
   }
 
   function handleStartRoute() {
-    if (!canAnimate) {
+    if (!effectiveCanAnimate) {
       return;
     }
 
@@ -1061,11 +1247,11 @@ export function Dashboard() {
   }
 
   function handleSkipAnimation() {
-    if (!canAnimate) {
+    if (!effectiveCanAnimate) {
       return;
     }
 
-    setTimelineStep(totalSteps);
+    setTimelineStep(effectiveTotalSteps);
     setIsAnimationRunning(false);
   }
 
@@ -1086,27 +1272,42 @@ export function Dashboard() {
     setIsThreeDimensional(true);
   }
 
+  function handleViewModeChange(mode: ViewMode) {
+    if (mode === viewMode) {
+      return;
+    }
+
+    setViewMode(mode);
+    setTimelineStep(1);
+  }
+
   const mapViewProps: MapViewProps = {
     origin: currentOrigin,
     destination: currentDestination,
     avoidNodes,
-    routeError,
-    routePath: calculatedRoutePath,
-    sceneStepIndex,
+    routeError: effectiveRouteError,
+    routePath: effectiveRoutePath,
+    sceneStepIndex: effectiveSceneStepIndex,
     zoomLevel: mapZoomLevel,
     isThreeDimensional,
     isPanelMinimized,
     timelineStep,
-    totalSteps,
-    distance: calculatedDistance,
-    canAnimate,
+    totalSteps: effectiveTotalSteps,
+    distance: effectiveDistance,
+    canAnimate: effectiveCanAnimate,
     isPaused: !isAnimationRunning,
     routeIndex: safeRouteIndex,
-    routeCount: routeCandidates.length,
+    routeCount: isDijkstraMode ? 1 : routeCandidates.length,
     aiPrompt,
     aiParseState,
     aiFeedback,
     isShareCopied,
+    viewMode,
+    showEdgeWeights,
+    traceState: traceSceneState,
+    stepLog,
+    onViewModeChange: handleViewModeChange,
+    onToggleEdgeWeights: () => setShowEdgeWeights((currentValue) => !currentValue),
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
     onSwapRoute: handleSwapRoute,

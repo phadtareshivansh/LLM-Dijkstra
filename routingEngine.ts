@@ -17,7 +17,7 @@ function getNodeIds(nodes: Node[]): Set<string> {
   return new Set(nodes.map((node) => node.name));
 }
 
-function reconstructPath(previousByNode: Map<string, string>, end: string): string[] {
+function reconstructPath(previousByNode: ReadonlyMap<string, string>, end: string): string[] {
   const path: string[] = [];
   let current: string | undefined = end;
 
@@ -142,5 +142,165 @@ export function dijkstraShortestPath(
     path: [],
     distance: Number.POSITIVE_INFINITY,
     error: UNREACHABLE_ERROR,
+  };
+}
+
+export interface TraceRelaxation {
+  from: string;
+  to: string;
+  proposedDistance: number;
+  improved: boolean;
+}
+
+export interface DijkstraTraceStep {
+  step: number;
+  settledNode: string | null;
+  settledDistance: number;
+  relaxations: TraceRelaxation[];
+  distanceByNode: ReadonlyMap<string, number>;
+  previousByNode: ReadonlyMap<string, string>;
+  finished: boolean;
+}
+
+export interface DijkstraTraceResult {
+  steps: DijkstraTraceStep[];
+  path: string[];
+  distance: number;
+  error?: string;
+}
+
+export function dijkstraTrace(
+  nodes: Node[],
+  edges: Edge[],
+  start: string,
+  end: string,
+  avoidNodes: string[] = []
+): DijkstraTraceResult {
+  const nodeIds = getNodeIds(nodes);
+  const avoidSet = new Set(avoidNodes);
+  const adjacency = buildAdjacencyMap(nodes, edges);
+
+  if (!nodeIds.has(start)) {
+    return {
+      steps: [],
+      path: [],
+      distance: Number.POSITIVE_INFINITY,
+      error: `Start node "${start}" does not exist in the graph.`,
+    };
+  }
+
+  if (!nodeIds.has(end)) {
+    return {
+      steps: [],
+      path: [],
+      distance: Number.POSITIVE_INFINITY,
+      error: `End node "${end}" does not exist in the graph.`,
+    };
+  }
+
+  if (avoidSet.has(start) || avoidSet.has(end)) {
+    return {
+      steps: [],
+      path: [],
+      distance: Number.POSITIVE_INFINITY,
+      error: UNREACHABLE_ERROR,
+    };
+  }
+
+  const distanceByNode = new Map<string, number>();
+  const previousByNode = new Map<string, string>();
+  const unvisited = new Set<string>();
+
+  for (const node of nodes) {
+    distanceByNode.set(node.name, Number.POSITIVE_INFINITY);
+
+    if (!avoidSet.has(node.name)) {
+      unvisited.add(node.name);
+    }
+  }
+
+  distanceByNode.set(start, 0);
+
+  const steps: DijkstraTraceStep[] = [];
+  let stepIndex = 0;
+
+  while (unvisited.size > 0) {
+    let currentNode: string | undefined;
+    let currentDistance = Number.POSITIVE_INFINITY;
+
+    for (const candidate of unvisited) {
+      const candidateDistance = distanceByNode.get(candidate) ?? Number.POSITIVE_INFINITY;
+      if (candidateDistance < currentDistance) {
+        currentDistance = candidateDistance;
+        currentNode = candidate;
+      }
+    }
+
+    if (currentNode === undefined || currentDistance === Number.POSITIVE_INFINITY) {
+      break;
+    }
+
+    unvisited.delete(currentNode);
+
+    const relaxations: TraceRelaxation[] = [];
+
+    for (const neighbor of adjacency.get(currentNode) ?? []) {
+      if (avoidSet.has(neighbor.nodeName)) {
+        continue;
+      }
+
+      const proposedDistance = currentDistance + neighbor.weight;
+      const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
+      const improved = proposedDistance < knownDistance;
+
+      if (improved) {
+        distanceByNode.set(neighbor.nodeName, proposedDistance);
+        previousByNode.set(neighbor.nodeName, currentNode);
+      }
+
+      relaxations.push({
+        from: currentNode,
+        to: neighbor.nodeName,
+        proposedDistance,
+        improved,
+      });
+    }
+
+    const finished = currentNode === end;
+
+    steps.push({
+      step: stepIndex,
+      settledNode: currentNode,
+      settledDistance: currentDistance,
+      relaxations,
+      distanceByNode: new Map(distanceByNode),
+      previousByNode: new Map(previousByNode),
+      finished,
+    });
+
+    stepIndex += 1;
+
+    if (finished) {
+      break;
+    }
+  }
+
+  const lastStep = steps[steps.length - 1];
+
+  if (!lastStep || lastStep.settledNode !== end) {
+    return {
+      steps,
+      path: [],
+      distance: Number.POSITIVE_INFINITY,
+      error: UNREACHABLE_ERROR,
+    };
+  }
+
+  const path = reconstructPath(lastStep.previousByNode, end);
+
+  return {
+    steps,
+    path,
+    distance: lastStep.settledDistance,
   };
 }
