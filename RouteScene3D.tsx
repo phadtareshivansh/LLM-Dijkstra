@@ -1151,6 +1151,44 @@ export function RouteScene3D({
         </div>
       ) : null}
 
+      {onNodeClick ? (
+        <div className="absolute inset-0 z-40" style={zoomedLayerStyle}>
+          {nodes.map((node) => {
+            const point = getScenePoint(node, variant);
+            const isAvoided = sceneState.avoidNodeSet.has(node.name);
+
+            return (
+              <button
+                key={node.name}
+                type="button"
+                onClick={() => onNodeClick(node.name)}
+                aria-label={`${isAvoided ? 'Unavoid' : 'Avoid'} ${formatNodeLabel(node.name)}`}
+                title={`${isAvoided ? 'Unavoid' : 'Avoid'} ${formatNodeLabel(node.name)}`}
+                className="absolute flex items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#54F6BA]/70"
+                style={{
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                  width: '7%',
+                  height: '7%',
+                  minWidth: '30px',
+                  minHeight: '30px',
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: isAvoided ? 'rgba(248,113,113,0.18)' : 'transparent',
+                  boxShadow: isAvoided ? '0 0 12px rgba(239,68,68,0.4)' : 'none',
+                }}
+              >
+                {isAvoided ? (
+                  <svg className="pointer-events-none h-4 w-4 text-red-200" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="2" />
+                    <path d="m7.5 7.5 9 9m-9 0 9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {showHud ? (
         <div className="pointer-events-none absolute bottom-5 left-5 right-5 z-30 flex flex-wrap items-end justify-between gap-3">
           <div>

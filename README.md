@@ -8,6 +8,9 @@ An interactive 3D campus map where you can watch Dijkstra's algorithm build the 
 - Step-by-step Dijkstra visualization with a timeline you can skip or replay
 - **Dijkstra trace mode**: swap the view from "Route path" to "Dijkstra trace" and watch the algorithm explore — settled nodes turn green, the shortest-distance frontier glows cyan, improved edges pulse, and an expandable step log records every settle + relaxation (improved/rejected)
 - **Edge weight labels**: toggle per-edge cost pills on the map (they light up cyan while a relaxation improves them)
+- **Avoid by clicking**: click any node on the map to skip it (or click again to re-allow); start/end points are protected
+- **Manual scrubbing**: previous/next step buttons let you freeze and re-walk either animation, and Slow/Normal/Fast speed presets (or `?speed=900`) control the pace
+- **Preferences persist**: view mode, edge-weight toggle, and speed survive reloads via localStorage
 - **Alternative routes**: when several distinct paths exist, flip between them with the "Route 1 of N" switcher on the timeline (Yen's k-shortest-paths algorithm)
 - **Turn-by-turn directions**: expandable per-leg instructions with per-leg and cumulative distances for the active route
 - **Shareable deep links**: the URL stays in sync with your route (`?origin=&destination=&avoid=`), and "Copy route link" drops a share-ready URL into your clipboard
@@ -71,6 +74,7 @@ Without a key the app still works — it falls back to the built-in parser.
 | `RouteScene3D.tsx` | Three.js campus scene with the animated route (static world built once; only the route layer redraws per step) |
 | `routingEngine.ts` | Dijkstra implementation with avoid-node support, plus `dijkstraTrace` which records every settle/relaxation for the trace view |
 | `traceLog.ts` | Human-readable per-step descriptions for the algorithm step log |
+| `preferences.ts` | localStorage persistence for view mode, weight labels, and speed |
 | `kShortestPaths.ts` | Yen's algorithm for alternative (k-shortest) routes |
 | `directions.ts` | Leg-by-leg turn-by-turn instructions for a route |
 | `shareUtils.ts` | Shareable deep-link URL construction |

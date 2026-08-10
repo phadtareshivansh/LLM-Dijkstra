@@ -7,6 +7,7 @@ import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
 import { parseNavigationRequest } from './parseNavigationRequest';
 import { TraceLogEntry, describeTraceStep } from './traceLog';
+import { loadPreferences, savePreferences } from './preferences';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -518,6 +519,7 @@ interface MapViewProps {
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
   onSpeedChange: (ms: number) => void;
+  onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -568,6 +570,7 @@ function MapView({
   onViewModeChange,
   onToggleEdgeWeights,
   onSpeedChange,
+  onNodeClick,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -603,6 +606,7 @@ function MapView({
         traceState={traceState}
         traceEndpoints={viewMode === 'dijkstra' ? [origin, destination] : undefined}
         showWeightLabels={showEdgeWeights}
+        onNodeClick={onNodeClick}
       />
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
@@ -1020,7 +1024,7 @@ function ControlPanel({
             <path d="m12 2 2.34 7.16L22 12l-7.66 2.84L12 22l-2.34-7.16L2 12l7.66-2.84L12 2Z" />
           </svg>
           <p>
-            Describe your trip in plain words and AI will pick the start, end, and any places to skip.
+            Describe your trip in plain words and AI will pick the start, end, and any places to skip, or click any node on the map to avoid it.
             {routeError ? <span className="mt-2 block text-red-200">{routeError}</span> : null}
           </p>
         </div>
@@ -1077,9 +1081,15 @@ export function Dashboard() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isShareCopied, setIsShareCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('path');
-  const [showEdgeWeights, setShowEdgeWeights] = useState(true);
-  const [routeStepMs, setRouteStepMs] = useState(getQuerySpeedMs);
+  const [viewMode, setViewMode] = useState<ViewMode>(loadPreferences().viewMode);
+  const [showEdgeWeights, setShowEdgeWeights] = useState(loadPreferences().showEdgeWeights);
+  const [routeStepMs, setRouteStepMs] = useState(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('speed')) {
+      return getQuerySpeedMs();
+    }
+
+    return loadPreferences().speedMs;
+  });
 
   const routeCandidates = useMemo(() => {
     return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
@@ -1208,6 +1218,10 @@ export function Dashboard() {
   const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}|${viewMode}|${traceTotalSteps}`;
 
   useEffect(() => {
+    savePreferences({ viewMode, showEdgeWeights, speedMs: routeStepMs });
+  }, [routeStepMs, showEdgeWeights, viewMode]);
+
+  useEffect(() => {
     setTimelineStep(1);
     setIsAnimationRunning(effectiveCanAnimate);
   }, [routeSignature, effectiveCanAnimate]);
@@ -1305,6 +1319,22 @@ export function Dashboard() {
   function handleSwapRoute() {
     setCurrentOrigin(currentDestination);
     setCurrentDestination(currentOrigin);
+  }
+
+  function handleNodeToggleAvoid(nodeName: string) {
+    if (nodeName === currentOrigin || nodeName === currentDestination) {
+      setAiFeedback({
+        message: 'You cannot avoid the start or end point.',
+        tone: 'error',
+      });
+      return;
+    }
+
+    setAvoidNodes((currentNodes) =>
+      currentNodes.includes(nodeName)
+        ? currentNodes.filter((name) => name !== nodeName)
+        : [...currentNodes, nodeName]
+    );
   }
 
   function handleShareLink() {
@@ -1442,6 +1472,7 @@ export function Dashboard() {
     onViewModeChange: handleViewModeChange,
     onToggleEdgeWeights: () => setShowEdgeWeights((currentValue) => !currentValue),
     onSpeedChange: setRouteStepMs,
+    onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
     onSwapRoute: handleSwapRoute,
