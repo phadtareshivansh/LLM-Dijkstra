@@ -9,6 +9,7 @@ export interface TraceStepSceneState {
   settledNodes: string[];
   frontierNodes: string[];
   relaxedEdges: string[];
+  distances: ReadonlyArray<{ node: string; distance: number }>;
   finished: boolean;
 }
 
@@ -25,6 +26,7 @@ export interface RouteScene3DProps {
   traceState?: TraceStepSceneState | null;
   traceEndpoints?: string[];
   showWeightLabels?: boolean;
+  onNodeClick?: (nodeName: string) => void;
 }
 
 const WORLD_WIDTH = 22;
@@ -410,6 +412,7 @@ export function RouteScene3D({
   traceState = null,
   traceEndpoints = [],
   showWeightLabels = false,
+  onNodeClick,
 }: RouteScene3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphGroupRef = useRef<THREE.Group | null>(null);
@@ -791,6 +794,9 @@ export function RouteScene3D({
     ...(activePath.length > 0 ? [activePath[0], activePath[activePath.length - 1]] : []),
     ...traceEndpoints,
   ]);
+  const traceDistancesByName = new Map(
+    (traceState?.distances ?? []).map(({ node, distance }) => [node, distance])
+  );
   const zoomedLayerStyle = {
     transform: `scale(${zoomLevel})`,
     transformOrigin: '58% 46%',
@@ -1059,33 +1065,51 @@ export function RouteScene3D({
           }
 
           return (
-            <span
-              key={node.name}
-              className="absolute rounded-md border px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-md"
-              style={{
-                left: `${point.x}%`,
-                top: `${point.y}%`,
-                transform: 'translate(-50%, -50%)',
-                borderColor: isAvoided
-                  ? 'rgba(248, 113, 113, 0.55)'
-                  : isCurrent
-                    ? 'rgba(56,189,248,0.8)'
+            <React.Fragment key={node.name}>
+              <span
+                className="absolute rounded-md border px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-md"
+                style={{
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  borderColor: isAvoided
+                    ? 'rgba(248, 113, 113, 0.55)'
+                    : isCurrent
+                      ? 'rgba(56,189,248,0.8)'
+                      : isActive
+                        ? `${THEME.primaryAccent}66`
+                        : 'rgba(255, 255, 255, 0.14)',
+                  backgroundColor: isAvoided
+                    ? 'rgba(127, 29, 29, 0.72)'
                     : isActive
-                      ? `${THEME.primaryAccent}66`
-                      : 'rgba(255, 255, 255, 0.14)',
-                backgroundColor: isAvoided
-                  ? 'rgba(127, 29, 29, 0.72)'
-                  : isActive
-                    ? 'rgba(0, 255, 157, 0.18)'
-                    : isFrontier
-                      ? 'rgba(14, 116, 144, 0.72)'
-                      : 'rgba(3, 12, 9, 0.76)',
-                boxShadow: isCurrent ? '0 0 26px rgba(56,189,248,0.55)' : 'none',
-                color: isActive || isCurrent ? '#E9FFF6' : 'rgba(255, 255, 255, 0.84)',
-              }}
-            >
-              {formatNodeLabel(node.name)}
-            </span>
+                      ? 'rgba(0, 255, 157, 0.18)'
+                      : isFrontier
+                        ? 'rgba(14, 116, 144, 0.72)'
+                        : 'rgba(3, 12, 9, 0.76)',
+                  boxShadow: isCurrent ? '0 0 26px rgba(56,189,248,0.55)' : 'none',
+                  color: isActive || isCurrent ? '#E9FFF6' : 'rgba(255, 255, 255, 0.84)',
+                }}
+              >
+                {formatNodeLabel(node.name)}
+              </span>
+              {traceState && traceDistancesByName.has(node.name) && !isCurrent ? (
+                <span
+                  className="absolute rounded-full border px-1.5 py-0.5 font-mono text-[9px] font-bold tabular-nums"
+                  style={{
+                    left: `${point.x}%`,
+                    top: `${point.y + 3}%`,
+                    transform: 'translate(-50%, -50%)',
+                    borderColor: isFrontier
+                      ? 'rgba(56,189,248,0.55)'
+                      : 'rgba(255,255,255,0.14)',
+                    backgroundColor: isFrontier ? 'rgba(14,116,144,0.82)' : 'rgba(2,18,14,0.88)',
+                    color: isFrontier ? '#BAE6FD' : 'rgba(255,255,255,0.74)',
+                  }}
+                >
+                  d={traceDistancesByName.get(node.name)}
+                </span>
+              ) : null}
+            </React.Fragment>
           );
         })}
       </div>

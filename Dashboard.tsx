@@ -17,6 +17,11 @@ interface AiFeedback {
 }
 
 const ROUTE_STEP_MS = 920;
+const SPEED_PRESETS = [
+  { label: 'Slow', ms: 1800 },
+  { label: 'Normal', ms: 920 },
+  { label: 'Fast', ms: 400 },
+] as const;
 const DEFAULT_SOURCE = 'Main_Gate';
 const DEFAULT_DESTINATION = 'Library';
 const MIN_MAP_ZOOM = 0.78;
@@ -66,6 +71,20 @@ function getQueryAvoidNodes(): string[] {
     .split(',')
     .map((name) => name.trim())
     .filter((name) => validNames.has(name));
+}
+
+function getQuerySpeedMs(): number {
+  if (typeof window === 'undefined') {
+    return ROUTE_STEP_MS;
+  }
+
+  const value = Number(new URLSearchParams(window.location.search).get('speed'));
+
+  if (!Number.isFinite(value)) {
+    return ROUTE_STEP_MS;
+  }
+
+  return Math.min(3000, Math.max(200, Math.round(value)));
 }
 
 function getNodeLabel(nodeName: string): string {
@@ -183,6 +202,8 @@ interface RouteTimelineProps {
   avoidNodes: string[];
   onRouteChange: (routeIndex: number) => void;
   onSkip: () => void;
+  onStepBack: () => void;
+  onStepForward: () => void;
   onTogglePause: () => void;
   onReplay: () => void;
   canControl: boolean;
@@ -199,6 +220,8 @@ function RouteTimeline({
   avoidNodes,
   onRouteChange,
   onSkip,
+  onStepBack,
+  onStepForward,
   onTogglePause,
   onReplay,
   canControl,
@@ -315,7 +338,20 @@ function RouteTimeline({
           </div>
         </div>
 
-<div className="flex w-full items-stretch justify-center gap-3 sm:w-[270px]">
+<div className="flex w-full items-stretch justify-center gap-2 sm:w-[330px]">
+          <button
+            type="button"
+            onClick={onStepBack}
+            disabled={!canControl || currentStep <= 1}
+            aria-label="Previous step"
+            title="Previous step"
+            className="flex h-14 w-12 shrink-0 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m15 6-6 6 6 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
           <button
             type="button"
             onClick={onTogglePause}
@@ -332,6 +368,19 @@ function RouteTimeline({
                 <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
               </svg>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onStepForward}
+            disabled={!canControl || currentStep >= totalSteps}
+            aria-label="Next step"
+            title="Next step"
+            className="flex h-14 w-12 shrink-0 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
 
           <button
@@ -463,10 +512,12 @@ interface MapViewProps {
   isShareCopied: boolean;
   viewMode: ViewMode;
   showEdgeWeights: boolean;
+  speedMs: number;
   traceState: TraceStepSceneState | null;
   stepLog: TraceLogEntry[];
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
+  onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -478,6 +529,8 @@ interface MapViewProps {
   onExpand: () => void;
   onShareLink: () => void;
   onSkip: () => void;
+  onStepBack: () => void;
+  onStepForward: () => void;
   onTogglePause: () => void;
   onReplay: () => void;
   onZoomIn: () => void;
@@ -509,10 +562,12 @@ function MapView({
   isShareCopied,
   viewMode,
   showEdgeWeights,
+  speedMs,
   traceState,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
+  onSpeedChange,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -524,6 +579,8 @@ function MapView({
   onExpand,
   onShareLink,
   onSkip,
+  onStepBack,
+  onStepForward,
   onTogglePause,
   onReplay,
   onZoomIn,
@@ -565,9 +622,11 @@ function MapView({
           isShareCopied={isShareCopied}
           viewMode={viewMode}
           showEdgeWeights={showEdgeWeights}
+          speedMs={speedMs}
           stepLog={stepLog}
           onViewModeChange={onViewModeChange}
           onToggleEdgeWeights={onToggleEdgeWeights}
+          onSpeedChange={onSpeedChange}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
           onSwapRoute={onSwapRoute}
@@ -589,6 +648,28 @@ function MapView({
         onResetView={onResetView}
       />
 
+      {viewMode === 'dijkstra' ? (
+        <div className="pointer-events-none absolute bottom-[10.5rem] right-4 z-30 hidden flex-col gap-2 rounded-lg border border-white/14 bg-[#071116]/82 px-4 py-3 text-xs text-white/82 shadow-xl shadow-black/40 backdrop-blur-xl sm:flex">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">Algorithm legend</p>
+          <span className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-[#00FF9D]/70 bg-[#00FF9D]/25" />
+            Settled node
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-[#38BDF8]/70 bg-[#38BDF8]/25" />
+            Frontier (tentative dist)
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-1 w-5 rounded-full bg-[#38BDF8]/85" />
+            Relaxed edge
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-[#F87171]/70 bg-[#F87171]/25" />
+            Avoided node
+          </span>
+        </div>
+      ) : null}
+
       <RouteTimeline
         currentStep={timelineStep}
         totalSteps={totalSteps}
@@ -600,6 +681,8 @@ function MapView({
         avoidNodes={avoidNodes}
         onRouteChange={onRouteChange}
         onSkip={onSkip}
+        onStepBack={onStepBack}
+        onStepForward={onStepForward}
         onTogglePause={onTogglePause}
         onReplay={onReplay}
         canControl={canAnimate}
@@ -619,9 +702,11 @@ interface ControlPanelProps {
   isShareCopied: boolean;
   viewMode: ViewMode;
   showEdgeWeights: boolean;
+  speedMs: number;
   stepLog: TraceLogEntry[];
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
+  onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
@@ -644,9 +729,11 @@ function ControlPanel({
   isShareCopied,
   viewMode,
   showEdgeWeights,
+  speedMs,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
+  onSpeedChange,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -746,6 +833,26 @@ function ControlPanel({
               aria-label="Show edge weights"
             />
           </label>
+          <div className="mt-3">
+            <span className="mb-2 block text-sm font-semibold text-white">Animation speed</span>
+            <div className="grid grid-cols-3 gap-2">
+              {SPEED_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => onSpeedChange(preset.ms)}
+                  aria-pressed={speedMs === preset.ms}
+                  className={`h-10 rounded-md border text-sm font-semibold transition-colors ${
+                    speedMs === preset.ms
+                      ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                      : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div>
@@ -972,6 +1079,7 @@ export function Dashboard() {
   const [isShareCopied, setIsShareCopied] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('path');
   const [showEdgeWeights, setShowEdgeWeights] = useState(true);
+  const [routeStepMs, setRouteStepMs] = useState(getQuerySpeedMs);
 
   const routeCandidates = useMemo(() => {
     return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
@@ -1055,6 +1163,11 @@ export function Dashboard() {
       .filter((relaxation) => relaxation.improved)
       .map((relaxation) => `${relaxation.from}->${relaxation.to}`);
 
+    const distances = Array.from(traceCurrentStep.distanceByNode.entries())
+      .filter(([, distance]) => Number.isFinite(distance))
+      .map(([node, distance]) => ({ node, distance }))
+      .sort((a, b) => a.distance - b.distance);
+
     return {
       step: traceCurrentStep.step,
       totalSteps: traceTotalSteps,
@@ -1062,6 +1175,7 @@ export function Dashboard() {
       settledNodes,
       frontierNodes,
       relaxedEdges,
+      distances,
       finished: traceCurrentStep.finished,
     };
   }, [isDijkstraMode, traceCurrentIndex, traceCurrentStep, traceResult, traceTotalSteps]);
@@ -1110,10 +1224,10 @@ export function Dashboard() {
 
     const timeoutId = window.setTimeout(() => {
       setTimelineStep((currentStep) => Math.min(currentStep + 1, effectiveTotalSteps));
-    }, ROUTE_STEP_MS);
+    }, routeStepMs);
 
     return () => window.clearTimeout(timeoutId);
-  }, [effectiveCanAnimate, effectiveTotalSteps, isAnimationRunning, timelineStep]);
+  }, [effectiveCanAnimate, effectiveTotalSteps, isAnimationRunning, routeStepMs, timelineStep]);
 
   function handleOriginChange(value: string) {
     setCurrentOrigin(value);
@@ -1255,6 +1369,24 @@ export function Dashboard() {
     setIsAnimationRunning(false);
   }
 
+  function handleStepBack() {
+    if (!effectiveCanAnimate) {
+      return;
+    }
+
+    setTimelineStep((currentStep) => Math.max(1, currentStep - 1));
+    setIsAnimationRunning(false);
+  }
+
+  function handleStepForward() {
+    if (!effectiveCanAnimate) {
+      return;
+    }
+
+    setTimelineStep((currentStep) => Math.min(effectiveTotalSteps, currentStep + 1));
+    setIsAnimationRunning(false);
+  }
+
   function handleZoomIn() {
     setMapZoomLevel((zoomLevel) => clampMapZoom(zoomLevel + MAP_ZOOM_STEP));
   }
@@ -1304,10 +1436,12 @@ export function Dashboard() {
     isShareCopied,
     viewMode,
     showEdgeWeights,
+    speedMs: routeStepMs,
     traceState: traceSceneState,
     stepLog,
     onViewModeChange: handleViewModeChange,
     onToggleEdgeWeights: () => setShowEdgeWeights((currentValue) => !currentValue),
+    onSpeedChange: setRouteStepMs,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
     onSwapRoute: handleSwapRoute,
@@ -1320,6 +1454,8 @@ export function Dashboard() {
     onExpand: () => setIsPanelMinimized(false),
     onShareLink: handleShareLink,
     onSkip: handleSkipAnimation,
+    onStepBack: handleStepBack,
+    onStepForward: handleStepForward,
     onReplay: handleStartRoute,
     onZoomIn: handleZoomIn,
     onZoomOut: handleZoomOut,
