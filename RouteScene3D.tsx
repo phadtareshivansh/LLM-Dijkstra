@@ -701,7 +701,7 @@ export function RouteScene3D({
       );
       graphGroup.add(segment);
     }
-  }, [isRendererUnavailable, nodes, edges, variant]);
+  }, [isRendererUnavailable, isThreeDimensional, nodes, edges, variant]);
 
   useEffect(() => {
     const routeLayer = routeLayerGroupRef.current;
@@ -798,7 +798,7 @@ export function RouteScene3D({
       pinGroup.castShadow = true;
       routeLayer.add(pinGroup);
     }
-  }, [isRendererUnavailable, nodes, edges, activePath, avoidNodes, stepIndex, sceneState, traceSceneState, traceState, traceEndpoints, variant]);
+  }, [isRendererUnavailable, isThreeDimensional, nodes, edges, activePath, avoidNodes, stepIndex, sceneState, traceSceneState, traceState, traceEndpoints, variant]);
 
   const currentStepLabel =
     activePath.length > 0 ? `Step ${Math.min(stepIndex + 1, activePath.length)} of ${activePath.length}` : 'Preview';

@@ -1128,11 +1128,10 @@ export function Dashboard() {
   }, [avoidNodes, currentDestination, currentOrigin, isPanelMinimized]);
 
   const safeRouteIndex = Math.min(selectedRouteIndex, Math.max(routeCandidates.length - 1, 0));
-  const routeResult: RoutingResult = routeCandidates[safeRouteIndex] ?? {
-    path: [],
-    distance: Number.POSITIVE_INFINITY,
-    error: UNREACHABLE_ERROR,
-  };
+  const routeResult: RoutingResult = useMemo(
+    () => routeCandidates[safeRouteIndex] ?? { path: [], distance: Number.POSITIVE_INFINITY, error: UNREACHABLE_ERROR },
+    [routeCandidates, safeRouteIndex]
+  );
 
   const calculatedRoutePath = routeResult.path;
   const calculatedDistance = routeResult.distance;
@@ -1195,7 +1194,13 @@ export function Dashboard() {
     };
   }, [isDijkstraMode, traceCurrentIndex, traceCurrentStep, traceResult, traceTotalSteps]);
 
-  const effectiveRoutePath = isDijkstraMode ? (traceFinished ? traceResult.path : []) : calculatedRoutePath;
+  const effectiveRoutePath = useMemo(() => {
+    if (isDijkstraMode) {
+      return traceFinished ? traceResult.path : [];
+    }
+
+    return calculatedRoutePath;
+  }, [isDijkstraMode, traceFinished, traceResult.path, calculatedRoutePath]);
   const effectiveDistance = isDijkstraMode
     ? !traceFinished || traceResult.error
       ? Number.POSITIVE_INFINITY
