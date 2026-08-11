@@ -21,6 +21,7 @@ export const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
 
 const PARSE_CACHE_KEY_PREFIX = 'dijkstra-navigator:parse:';
 export const PARSE_CACHE_TTL_MS = 30 * 60 * 1000;
+const PARSE_CACHE_MAX_ENTRIES = 50;
 
 interface CachedParseEntry {
   result: NavigationParseResult;
@@ -70,6 +71,57 @@ function getCachedParse(input: string): NavigationParseResult | null {
   }
 }
 
+function parseCachedEntry(store: Storage, key: string): CachedParseEntry | null {
+  try {
+    const rawEntry = store.getItem(key);
+
+    if (!rawEntry) {
+      return null;
+    }
+
+    return JSON.parse(rawEntry) as CachedParseEntry;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes expired entries and evicts the oldest entries when the cache grows
+ * beyond PARSE_CACHE_MAX_ENTRIES, so the parse cache cannot grow unboundedly.
+ */
+function evictStaleCacheEntries(store: Storage): void {
+  const entries: Array<{ key: string; timestamp: number }> = [];
+
+  for (let index = 0; index < store.length; index += 1) {
+    const key = store.key(index);
+
+    if (!key || !key.startsWith(PARSE_CACHE_KEY_PREFIX)) {
+      continue;
+    }
+
+    const cached = parseCachedEntry(store, key);
+
+    if (!cached || Date.now() - cached.timestamp > PARSE_CACHE_TTL_MS) {
+      store.removeItem(key);
+      continue;
+    }
+
+    entries.push({ key, timestamp: cached.timestamp });
+  }
+
+  if (entries.length <= PARSE_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entriesToRemove = entries
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(0, entries.length - PARSE_CACHE_MAX_ENTRIES);
+
+  for (const entry of entriesToRemove) {
+    store.removeItem(entry.key);
+  }
+}
+
 function setCachedParse(input: string, result: NavigationParseResult): void {
   const store = getCacheStore();
 
@@ -83,6 +135,7 @@ function setCachedParse(input: string, result: NavigationParseResult): void {
       timestamp: Date.now(),
     };
     store.setItem(PARSE_CACHE_KEY_PREFIX + input, JSON.stringify(entry));
+    evictStaleCacheEntries(store);
   } catch {
     // Caching is best-effort; a full or blocked store must never break parsing.
   }
@@ -108,23 +161,15 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<
 }
 
 function getGeminiApiKey(): string {
-  const environment = globalThis as typeof globalThis & {
-    process?: { env?: Record<string, string | undefined> };
-    import?: never;
-  };
-
-  const nextKey = environment.process?.env?.NEXT_PUBLIC_GEMINI_API_KEY;
   const viteKey = (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GEMINI_API_KEY : undefined) as
     | string
     | undefined;
 
-  const apiKey = nextKey ?? viteKey;
-
-  if (!apiKey) {
-    throw new Error('Missing Gemini API key. Set NEXT_PUBLIC_GEMINI_API_KEY or VITE_GEMINI_API_KEY.');
+  if (!viteKey) {
+    throw new Error('Missing Gemini API key. Set VITE_GEMINI_API_KEY.');
   }
 
-  return apiKey;
+  return viteKey;
 }
 
 function firstNodeMention(value: string): string | null {

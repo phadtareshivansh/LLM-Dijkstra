@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import RouteScene3D, { TraceStepSceneState } from './RouteScene3D';
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
 import { RoutingResult, UNREACHABLE_ERROR, dijkstraTrace } from './routingEngine';
@@ -7,6 +7,7 @@ import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
 import { parseNavigationRequest } from './parseNavigationRequest';
 import { TraceLogEntry, describeTraceStep } from './traceLog';
+import { formatNodeLabel as getNodeLabel } from './nodeLabels';
 import { loadPreferences, savePreferences } from './preferences';
 
 type AiParseState = 'idle' | 'parsing';
@@ -86,14 +87,6 @@ function getQuerySpeedMs(): number {
   }
 
   return Math.min(3000, Math.max(200, Math.round(value)));
-}
-
-function getNodeLabel(nodeName: string): string {
-  if (nodeName === 'Main_Gate') {
-    return 'Main Entrance';
-  }
-
-  return nodeName.replace(/_/g, ' ');
 }
 
 function getTimelineStepCount(distance: number, pathLength: number): number {
@@ -1071,7 +1064,11 @@ export function Dashboard() {
 
     return requested !== currentOrigin ? requested : DEFAULT_DESTINATION;
   });
-  const [avoidNodes, setAvoidNodes] = useState<string[]>(getQueryAvoidNodes);
+  const [avoidNodes, setAvoidNodes] = useState<string[]>(() => {
+    const endpointSet = new Set([currentOrigin, currentDestination]);
+
+    return getQueryAvoidNodes().filter((nodeName) => !endpointSet.has(nodeName));
+  });
   const [timelineStep, setTimelineStep] = useState(1);
   const [isAnimationRunning, setIsAnimationRunning] = useState(true);
   const [mapZoomLevel, setMapZoomLevel] = useState(1);
@@ -1081,15 +1078,17 @@ export function Dashboard() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isShareCopied, setIsShareCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>(loadPreferences().viewMode);
-  const [showEdgeWeights, setShowEdgeWeights] = useState(loadPreferences().showEdgeWeights);
-  const [routeStepMs, setRouteStepMs] = useState(() => {
+  const [preferences, setPreferences] = useState(() => {
+    const loaded = loadPreferences();
+
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('speed')) {
-      return getQuerySpeedMs();
+      return { ...loaded, speedMs: getQuerySpeedMs() };
     }
 
-    return loadPreferences().speedMs;
+    return loaded;
   });
+  const { viewMode, showEdgeWeights, speedMs: routeStepMs } = preferences;
+  const shareResetTimeoutRef = useRef<number | null>(null);
 
   const routeCandidates = useMemo(() => {
     return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
@@ -1218,8 +1217,16 @@ export function Dashboard() {
   const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}|${viewMode}|${traceTotalSteps}`;
 
   useEffect(() => {
-    savePreferences({ viewMode, showEdgeWeights, speedMs: routeStepMs });
-  }, [routeStepMs, showEdgeWeights, viewMode]);
+    savePreferences(preferences);
+  }, [preferences]);
+
+  useEffect(() => {
+    return () => {
+      if (shareResetTimeoutRef.current !== null) {
+        window.clearTimeout(shareResetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setTimelineStep(1);
@@ -1349,8 +1356,12 @@ export function Dashboard() {
     });
 
     const confirmCopy = () => {
+      if (shareResetTimeoutRef.current !== null) {
+        window.clearTimeout(shareResetTimeoutRef.current);
+      }
+
       setIsShareCopied(true);
-      window.setTimeout(() => setIsShareCopied(false), 2500);
+      shareResetTimeoutRef.current = window.setTimeout(() => setIsShareCopied(false), 2500);
     };
 
     if (navigator.clipboard?.writeText) {
@@ -1439,7 +1450,7 @@ export function Dashboard() {
       return;
     }
 
-    setViewMode(mode);
+    setPreferences((current) => ({ ...current, viewMode: mode }));
     setTimelineStep(1);
   }
 
@@ -1470,8 +1481,9 @@ export function Dashboard() {
     traceState: traceSceneState,
     stepLog,
     onViewModeChange: handleViewModeChange,
-    onToggleEdgeWeights: () => setShowEdgeWeights((currentValue) => !currentValue),
-    onSpeedChange: setRouteStepMs,
+    onToggleEdgeWeights: () =>
+      setPreferences((current) => ({ ...current, showEdgeWeights: !current.showEdgeWeights })),
+    onSpeedChange: (ms) => setPreferences((current) => ({ ...current, speedMs: ms })),
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,

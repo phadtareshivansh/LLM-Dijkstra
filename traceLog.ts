@@ -1,17 +1,10 @@
 import { DijkstraTraceStep } from './routingEngine';
+import { formatNodeLabel } from './nodeLabels';
 
 export interface TraceLogEntry {
   step: number;
   title: string;
   lines: string[];
-}
-
-function formatNodeLabel(nodeName: string): string {
-  if (nodeName === 'Main_Gate') {
-    return 'Main Entrance';
-  }
-
-  return nodeName.replace(/_/g, ' ');
 }
 
 export function describeTraceStep(step: DijkstraTraceStep): TraceLogEntry {

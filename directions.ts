@@ -1,4 +1,6 @@
 import { Edge } from './themeConstants';
+import { buildEdgeWeightMap } from './graphUtils';
+import { getDisplayLabel } from './nodeLabels';
 
 export interface NavigationLeg {
   index: number;
@@ -6,17 +8,6 @@ export interface NavigationLeg {
   to: string;
   distance: number;
   cumulativeDistance: number;
-}
-
-function buildEdgeWeightMap(edges: Edge[]): Map<string, number> {
-  const weightMap = new Map<string, number>();
-
-  for (const edge of edges) {
-    weightMap.set(`${edge.from}->${edge.to}`, edge.weight);
-    weightMap.set(`${edge.to}->${edge.from}`, edge.weight);
-  }
-
-  return weightMap;
 }
 
 /**
@@ -54,12 +45,12 @@ export function buildDirections(path: string[], edges: Edge[]): NavigationLeg[] 
 
 /**
  * Formats a leg as plain English, e.g.
- * "1. Head from Main Entrance to Auditorium (1 unit)."
+ * "1. Head from Main Gate to Auditorium (1 unit)."
  */
 export function formatDirectionText(leg: NavigationLeg): string {
   const distanceLabel = `${leg.distance} unit${leg.distance === 1 ? '' : 's'}`;
-  const fromLabel = leg.from.replace(/_/g, ' ');
-  const toLabel = leg.to.replace(/_/g, ' ');
+  const fromLabel = getDisplayLabel(leg.from);
+  const toLabel = getDisplayLabel(leg.to);
 
   return `${leg.index + 1}. Head from ${fromLabel} to ${toLabel} (${distanceLabel}).`;
 }

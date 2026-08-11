@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Edge, Node, THEME } from './themeConstants';
+import { formatNodeLabel } from './nodeLabels';
 
 export interface TraceStepSceneState {
   step: number;
@@ -129,14 +130,6 @@ function getContainerClass(variant: RouteScene3DProps['variant']): string {
   return variant === 'background'
     ? 'absolute inset-0 overflow-hidden bg-[#02080B]'
     : 'relative min-h-[520px] overflow-hidden rounded-[22px] border border-emerald-300/15 bg-[#06110D] shadow-2xl shadow-emerald-950/30 lg:min-h-[660px]';
-}
-
-function formatNodeLabel(nodeName: string): string {
-  if (nodeName === 'Main_Gate') {
-    return 'Main Entrance';
-  }
-
-  return nodeName.replace(/_/g, ' ');
 }
 
 function getScenePoint(node: Node, variant: RouteScene3DProps['variant']): { x: number; y: number } {
@@ -419,6 +412,7 @@ export function RouteScene3D({
   const staticLayerGroupRef = useRef<THREE.Group | null>(null);
   const routeLayerGroupRef = useRef<THREE.Group | null>(null);
   const markerRef = useRef<THREE.Mesh | null>(null);
+  const rendererCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRendererUnavailable, setIsRendererUnavailable] = useState(false);
 
   const sceneState = useMemo(() => {
@@ -496,9 +490,10 @@ export function RouteScene3D({
       height: '100%',
       opacity: '1',
       pointerEvents: 'none',
-      transform: `scale(${zoomLevel})`,
-      transformOrigin: '58% 46%',
     });
+    renderer.domElement.style.transform = `scale(${zoomLevel})`;
+    renderer.domElement.style.transformOrigin = '58% 46%';
+    rendererCanvasRef.current = renderer.domElement;
     container.appendChild(renderer.domElement);
 
     const graphGroup = new THREE.Group();
@@ -585,8 +580,20 @@ export function RouteScene3D({
       staticLayerGroupRef.current = null;
       routeLayerGroupRef.current = null;
       markerRef.current = null;
+      rendererCanvasRef.current = null;
     };
-  }, [isRendererUnavailable, isThreeDimensional, variant, zoomLevel]);
+  }, [isRendererUnavailable, isThreeDimensional, variant]);
+
+  useEffect(() => {
+    const canvas = rendererCanvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    canvas.style.transform = `scale(${zoomLevel})`;
+    canvas.style.transformOrigin = '58% 46%';
+  }, [zoomLevel]);
 
   useEffect(() => {
     const graphGroup = staticLayerGroupRef.current;
