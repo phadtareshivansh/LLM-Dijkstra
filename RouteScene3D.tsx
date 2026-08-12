@@ -550,16 +550,21 @@ export function RouteScene3D({
 
     const clock = new THREE.Clock();
     let animationFrame = 0;
+    const prefersReducedMotion =
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const animate = () => {
       const elapsed = clock.getElapsedTime();
 
-      if (markerRef.current) {
+      if (markerRef.current && !prefersReducedMotion) {
         markerRef.current.position.y = 0.9 + Math.sin(elapsed * 5) * 0.08;
         markerRef.current.rotation.y += 0.035;
       }
 
-      graphGroup.rotation.y = isThreeDimensional ? Math.sin(elapsed * 0.12) * 0.018 : 0;
+      if (!prefersReducedMotion) {
+        graphGroup.rotation.y = isThreeDimensional ? Math.sin(elapsed * 0.12) * 0.018 : 0;
+      }
+
       camera.lookAt(0.3, 0, 0.2);
       renderer.render(scene, camera);
       animationFrame = window.requestAnimationFrame(animate);

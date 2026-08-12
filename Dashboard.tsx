@@ -903,6 +903,7 @@ function ControlPanel({
           </label>
           {aiFeedback ? (
             <p
+              role="status"
               className={`mt-2 text-sm leading-5 ${aiFeedback.tone === 'success' ? 'text-emerald-200' : 'text-red-200'}`}
             >
               {aiFeedback.message}
@@ -1244,6 +1245,15 @@ export function Dashboard() {
     }
 
     if (timelineStep >= effectiveTotalSteps) {
+      setIsAnimationRunning(false);
+      return undefined;
+    }
+
+    if (
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      setTimelineStep(effectiveTotalSteps);
       setIsAnimationRunning(false);
       return undefined;
     }

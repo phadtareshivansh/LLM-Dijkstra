@@ -199,8 +199,8 @@ function splitAvoidClause(userInput: string): { routeText: string; avoidText: st
 }
 
 function parseNavigationRequestLocally(userInput: string): NavigationParseResult {
-  const { routeText, avoidText } = splitAvoidClause(userInput);
-  const avoidNodes = uniqueNodeNames(findNodeMentions(avoidText).map((mention) => mention.nodeName));
+  const { routeText: splitRouteText, avoidText } = splitAvoidClause(userInput);
+  const routeText = splitRouteText.trim() ? splitRouteText : userInput;
   let origin: string | null = null;
   let destination: string | null = null;
 
@@ -224,6 +224,14 @@ function parseNavigationRequestLocally(userInput: string): NavigationParseResult
     );
     destination = destinationMatch ? firstNodeMention(destinationMatch[1]) : null;
   }
+
+  const endpointSet = new Set([origin, destination].filter((value): value is string => Boolean(value)));
+
+  const avoidNodes = uniqueNodeNames(
+    findNodeMentions(avoidText)
+      .map((mention) => mention.nodeName)
+      .filter((nodeName) => !endpointSet.has(nodeName))
+  );
 
   if (!origin || !destination) {
     const routeMentions = uniqueNodeNames(findNodeMentions(routeText).map((mention) => mention.nodeName)).filter(

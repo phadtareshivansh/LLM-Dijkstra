@@ -49,6 +49,21 @@ describe('parseNavigationRequest', () => {
     expect(parsed.avoid_nodes).toEqual(['Science_Lab']);
   });
 
+  it('handles a skip clause that precedes the route description', async () => {
+    const parsed = await parseNavigationRequest('skip the cafeteria and go to the library');
+
+    expect(parsed.origin).toBeNull();
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual(['Cafeteria']);
+  });
+
+  it('never lists the destination among the avoided nodes', async () => {
+    const parsed = await parseNavigationRequest('go to the library, skip the library');
+
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual([]);
+  });
+
   it('returns empty fields when no campus location is mentioned', async () => {
     const parsed = await parseNavigationRequest('what is the weather today');
 
