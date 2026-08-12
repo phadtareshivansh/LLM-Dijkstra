@@ -4,9 +4,16 @@ export interface RoutingResult {
   path: string[];
   distance: number;
   error?: string;
+  segments?: RoutingResult[];
 }
 
 export const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
+
+export interface SoftAvoidanceConfig {
+  penalty: number;
+}
+
+const DEFAULT_SOFT_PENALTY = 100;
 
 interface Neighbor {
   nodeName: string;
@@ -49,10 +56,15 @@ export function dijkstraShortestPath(
   edges: Edge[],
   start: string,
   end: string,
-  avoidNodes: string[] = []
+  avoidNodes: string[] = [],
+  softAvoidance?: SoftAvoidanceConfig
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const avoidSet = new Set(avoidNodes);
+  const softAvoidSet = softAvoidance
+    ? new Set(avoidNodes)
+    : new Set<string>();
+  const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
   const adjacency = buildAdjacencyMap(nodes, edges);
 
   if (!nodeIds.has(start)) {
@@ -128,7 +140,12 @@ export function dijkstraShortestPath(
         continue;
       }
 
-      const nextDistance = currentDistance + neighbor.weight;
+      let nextDistance = currentDistance + neighbor.weight;
+
+      if (softAvoidSet.has(neighbor.nodeName) || softAvoidSet.has(currentNode)) {
+        nextDistance += penalty;
+      }
+
       const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
 
       if (nextDistance < knownDistance) {
@@ -142,6 +159,52 @@ export function dijkstraShortestPath(
     path: [],
     distance: Number.POSITIVE_INFINITY,
     error: UNREACHABLE_ERROR,
+  };
+}
+
+export function dijkstraShortestPathWithWaypoints(
+  nodes: Node[],
+  edges: Edge[],
+  start: string,
+  waypoints: string[],
+  end: string,
+  avoidNodes: string[] = [],
+  softAvoidance?: SoftAvoidanceConfig
+): RoutingResult {
+  const allPoints = [start, ...waypoints, end];
+  const segments: RoutingResult[] = [];
+  let totalDistance = 0;
+  let combinedPath: string[] = [];
+
+  for (let index = 0; index < allPoints.length - 1; index += 1) {
+    const segmentStart = allPoints[index];
+    const segmentEnd = allPoints[index + 1];
+
+    const segmentResult = dijkstraShortestPath(nodes, edges, segmentStart, segmentEnd, avoidNodes, softAvoidance);
+
+    if (segmentResult.error) {
+      return {
+        path: [],
+        distance: Number.POSITIVE_INFINITY,
+        error: segmentResult.error,
+        segments,
+      };
+    }
+
+    segments.push(segmentResult);
+    totalDistance += segmentResult.distance;
+
+    if (index === 0) {
+      combinedPath = [...segmentResult.path];
+    } else {
+      combinedPath = [...combinedPath, ...segmentResult.path.slice(1)];
+    }
+  }
+
+  return {
+    path: combinedPath,
+    distance: totalDistance,
+    segments,
   };
 }
 

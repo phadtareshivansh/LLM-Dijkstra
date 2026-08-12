@@ -1,8 +1,8 @@
 import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import RouteScene3D, { TraceStepSceneState } from './RouteScene3D';
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
-import { RoutingResult, UNREACHABLE_ERROR, dijkstraTrace } from './routingEngine';
-import { kShortestPaths } from './kShortestPaths';
+import { dijkstraShortestPathWithWaypoints, SoftAvoidanceConfig, dijkstraTrace, RoutingResult, UNREACHABLE_ERROR } from './routingEngine';
+import { kShortestPaths, AlternativeRoute } from './kShortestPaths';
 import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
 import { parseNavigationRequest } from './parseNavigationRequest';
@@ -62,6 +62,25 @@ function getQueryAvoidNodes(): string[] {
   }
 
   const value = new URLSearchParams(window.location.search).get('avoid');
+
+  if (!value) {
+    return [];
+  }
+
+  const validNames = new Set(CAMPUS_NODES.map((node) => node.name));
+
+  return value
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => validNames.has(name));
+}
+
+function getQueryWaypoints(): string[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  const value = new URLSearchParams(window.location.search).get('waypoints');
 
   if (!value) {
     return [];
@@ -507,10 +526,14 @@ interface MapViewProps {
   viewMode: ViewMode;
   showEdgeWeights: boolean;
   speedMs: number;
+  softAvoidance: boolean;
+  routeCandidates: AlternativeRoute[];
+  selectedRouteIndex: number;
   traceState: TraceStepSceneState | null;
   stepLog: TraceLogEntry[];
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
+  onToggleSoftAvoidance: () => void;
   onSpeedChange: (ms: number) => void;
   onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
@@ -558,10 +581,14 @@ function MapView({
   viewMode,
   showEdgeWeights,
   speedMs,
+  softAvoidance,
+  routeCandidates,
+  selectedRouteIndex,
   traceState,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
+  onToggleSoftAvoidance,
   onSpeedChange,
   onNodeClick,
   onOriginChange,
@@ -625,9 +652,13 @@ function MapView({
           viewMode={viewMode}
           showEdgeWeights={showEdgeWeights}
           speedMs={speedMs}
+          softAvoidance={softAvoidance}
           stepLog={stepLog}
+          routeCandidates={routeCandidates}
+          selectedRouteIndex={selectedRouteIndex}
           onViewModeChange={onViewModeChange}
           onToggleEdgeWeights={onToggleEdgeWeights}
+          onToggleSoftAvoidance={onToggleSoftAvoidance}
           onSpeedChange={onSpeedChange}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
@@ -705,9 +736,13 @@ interface ControlPanelProps {
   viewMode: ViewMode;
   showEdgeWeights: boolean;
   speedMs: number;
+  softAvoidance: boolean;
   stepLog: TraceLogEntry[];
+  routeCandidates: AlternativeRoute[];
+  selectedRouteIndex: number;
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
+  onToggleSoftAvoidance: () => void;
   onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
@@ -732,9 +767,11 @@ function ControlPanel({
   viewMode,
   showEdgeWeights,
   speedMs,
+  softAvoidance,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
+  onToggleSoftAvoidance,
   onSpeedChange,
   onOriginChange,
   onDestinationChange,
@@ -745,6 +782,8 @@ function ControlPanel({
   onMinimize,
   onShareLink,
   canAnimate,
+  routeCandidates,
+  selectedRouteIndex,
 }: ControlPanelProps) {
   const directions = useMemo(() => buildDirections(routePath, CAMPUS_EDGES), [routePath]);
 
@@ -855,6 +894,19 @@ function ControlPanel({
               ))}
             </div>
           </div>
+        </div>
+
+        <div>
+          <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
+            <span>Soft avoid (penalize, don't block)</span>
+            <input
+              type="checkbox"
+              checked={softAvoidance}
+              onChange={() => onToggleSoftAvoidance()}
+              className="h-4 w-4 cursor-pointer accent-[#54F6BA]"
+              aria-label="Soft avoid"
+            />
+          </label>
         </div>
 
         <div>
@@ -974,6 +1026,55 @@ function ControlPanel({
         </details>
       ) : null}
 
+      {routeCandidates.length > 1 && viewMode !== 'dijkstra' ? (
+        <details className="mt-6 rounded-md border border-white/10 bg-white/[0.035] p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-white/90">
+            Route comparison ({routeCandidates.length} alternatives)
+          </summary>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm text-left text-white/78">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="pb-2 font-semibold text-white/90">Route</th>
+                  <th className="pb-2 font-semibold text-white/90">Distance</th>
+                  <th className="pb-2 font-semibold text-white/90">Path</th>
+                </tr>
+              </thead>
+              <tbody>
+                {routeCandidates.map((route: AlternativeRoute, idx: number) => (
+                  <tr
+                    key={idx}
+                    className={`border-b border-white/5 transition-colors ${
+                      idx === selectedRouteIndex ? 'bg-emerald-300/10' : ''
+                    }`}
+                  >
+                    <td className="py-2 font-semibold text-white">
+                      {idx === 0 ? 'Primary' : `Alt ${idx}`}
+                    </td>
+                    <td className="py-2 font-mono tabular-nums text-white/90">
+                      {route.distance} units
+                    </td>
+                    <td className="py-2 text-white/70">
+                      {route.path.map((node: string, i: number) => (
+                        <span key={i} className="flex items-center gap-1">
+                          {i > 0 && <span className="text-white/40">→</span>}
+                          <span className={i === 0 ? 'font-semibold' : ''}>
+                            {getNodeLabel(node)}
+                          </span>
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-xs text-white/50">
+            Click a route in the timeline switcher to select it.
+          </p>
+        </details>
+      ) : null}
+
       <button
         type="button"
         onClick={onStartRoute}
@@ -1075,6 +1176,11 @@ export function Dashboard() {
 
     return getQueryAvoidNodes().filter((nodeName) => !endpointSet.has(nodeName));
   });
+  const [waypoints, setWaypoints] = useState<string[]>(() => {
+    const endpointSet = new Set([currentOrigin, currentDestination]);
+
+    return getQueryWaypoints().filter((nodeName) => !endpointSet.has(nodeName));
+  });
   const [timelineStep, setTimelineStep] = useState(1);
   const [isAnimationRunning, setIsAnimationRunning] = useState(true);
   const [mapZoomLevel, setMapZoomLevel] = useState(1);
@@ -1093,16 +1199,32 @@ export function Dashboard() {
 
     return loaded;
   });
-  const { viewMode, showEdgeWeights, speedMs: routeStepMs } = preferences;
+  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance } = preferences;
   const shareResetTimeoutRef = useRef<number | null>(null);
 
   const routeCandidates = useMemo(() => {
-    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3);
-  }, [currentOrigin, currentDestination, avoidNodes]);
+    const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
+
+    if (waypoints.length > 0) {
+      const result = dijkstraShortestPathWithWaypoints(
+        CAMPUS_NODES,
+        CAMPUS_EDGES,
+        currentOrigin,
+        waypoints,
+        currentDestination,
+        avoidNodes,
+        softAvoidanceConfig
+      );
+
+      return result.error ? [] : [{ path: result.path, distance: result.distance }];
+    }
+
+    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig);
+  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance]);
 
   useEffect(() => {
     setSelectedRouteIndex(0);
-  }, [currentOrigin, currentDestination, avoidNodes]);
+  }, [currentOrigin, currentDestination, avoidNodes, waypoints]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1119,13 +1241,19 @@ export function Dashboard() {
       url.searchParams.set('avoid', avoidNodes.join(','));
     }
 
+    if (waypoints.length === 0) {
+      url.searchParams.delete('waypoints');
+    } else {
+      url.searchParams.set('waypoints', waypoints.join(','));
+    }
+
     url.searchParams.delete('panel');
     if (isPanelMinimized) {
       url.searchParams.set('panel', 'minimized');
     }
 
     window.history.replaceState(null, '', url.toString());
-  }, [avoidNodes, currentDestination, currentOrigin, isPanelMinimized]);
+  }, [avoidNodes, currentDestination, currentOrigin, isPanelMinimized, waypoints]);
 
   const safeRouteIndex = Math.min(selectedRouteIndex, Math.max(routeCandidates.length - 1, 0));
   const routeResult: RoutingResult = useMemo(
@@ -1177,10 +1305,12 @@ export function Dashboard() {
       .filter((relaxation) => relaxation.improved)
       .map((relaxation) => `${relaxation.from}->${relaxation.to}`);
 
-    const distances = Array.from(traceCurrentStep.distanceByNode.entries())
+    const distanceEntries: Array<[string, number]> = Array.from(traceCurrentStep.distanceByNode.entries());
+
+    const distances = distanceEntries
       .filter(([, distance]) => Number.isFinite(distance))
       .map(([node, distance]) => ({ node, distance }))
-      .sort((a, b) => a.distance - b.distance);
+      .sort((a: { node: string; distance: number }, b: { node: string; distance: number }) => a.distance - b.distance);
 
     return {
       step: traceCurrentStep.step,
@@ -1377,6 +1507,7 @@ export function Dashboard() {
       origin: currentOrigin,
       destination: currentDestination,
       avoidNodes,
+      waypoints,
     });
 
     const confirmCopy = () => {
@@ -1495,6 +1626,9 @@ export function Dashboard() {
     isPaused: !isAnimationRunning,
     routeIndex: safeRouteIndex,
     routeCount: isDijkstraMode ? 1 : routeCandidates.length,
+    softAvoidance,
+    routeCandidates,
+    selectedRouteIndex: safeRouteIndex,
     aiPrompt,
     aiParseState,
     aiFeedback,
@@ -1507,6 +1641,8 @@ export function Dashboard() {
     onViewModeChange: handleViewModeChange,
     onToggleEdgeWeights: () =>
       setPreferences((current) => ({ ...current, showEdgeWeights: !current.showEdgeWeights })),
+    onToggleSoftAvoidance: () =>
+      setPreferences((current) => ({ ...current, softAvoidance: !current.softAvoidance })),
     onSpeedChange: (ms) => setPreferences((current) => ({ ...current, speedMs: ms })),
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,

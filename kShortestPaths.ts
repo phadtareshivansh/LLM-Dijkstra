@@ -1,5 +1,5 @@
 import { Edge, Node } from './themeConstants';
-import { dijkstraShortestPath } from './routingEngine';
+import { dijkstraShortestPath, SoftAvoidanceConfig } from './routingEngine';
 import { pathDistance } from './graphUtils';
 
 export interface AlternativeRoute {
@@ -36,7 +36,8 @@ export function kShortestPaths(
   start: string,
   end: string,
   avoidNodes: string[] = [],
-  limit = 3
+  limit = 3,
+  softAvoidance?: SoftAvoidanceConfig
 ): AlternativeRoute[] {
   if (limit <= 0) {
     return [];
@@ -45,7 +46,7 @@ export function kShortestPaths(
   const found: AlternativeRoute[] = [];
   const candidatePool: AlternativeRoute[] = [];
 
-  const shortest = dijkstraShortestPath(nodes, edges, start, end, avoidNodes);
+  const shortest = dijkstraShortestPath(nodes, edges, start, end, avoidNodes, softAvoidance);
 
   if (shortest.error || shortest.path.length === 0) {
     return [];
@@ -82,7 +83,7 @@ export function kShortestPaths(
 
       const spurEdges = edges.filter((edge) => !blockedEdges.has(`${edge.from}->${edge.to}`));
       const spurAvoidNodes = [...avoidNodes, ...rootPath.slice(0, -1)];
-      const spurResult = dijkstraShortestPath(nodes, spurEdges, spurNode, end, spurAvoidNodes);
+      const spurResult = dijkstraShortestPath(nodes, spurEdges, spurNode, end, spurAvoidNodes, softAvoidance);
 
       if (spurResult.error || spurResult.path.length === 0) {
         continue;
