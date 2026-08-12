@@ -288,7 +288,7 @@ function RouteTimeline({
             ) : null}
           </div>
 
-          <div className="mx-auto flex max-w-[980px] items-center">
+          <div className="mx-auto flex max-w-[980px] items-center overflow-x-auto pb-1 [scrollbar-width:thin]">
             {steps.map((step) => {
               const isComplete = step < currentStep;
               const isCurrent = step === currentStep;
@@ -584,6 +584,11 @@ function MapView({
   onToggleThreeD,
   onResetView,
 }: MapViewProps) {
+  const traceEndpointPair = useMemo(
+    () => (viewMode === 'dijkstra' ? [origin, destination] : undefined),
+    [viewMode, origin, destination]
+  );
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
       <RouteScene3D
@@ -597,7 +602,7 @@ function MapView({
         variant="background"
         showHud={false}
         traceState={traceState}
-        traceEndpoints={viewMode === 'dijkstra' ? [origin, destination] : undefined}
+        traceEndpoints={traceEndpointPair}
         showWeightLabels={showEdgeWeights}
         onNodeClick={onNodeClick}
       />
@@ -1301,13 +1306,17 @@ export function Dashboard() {
       changes.push(`end at ${getNodeLabel(nextDestination)}`);
     }
 
+    const nextAvoidNodes = parsed.avoid_nodes.filter(
+      (nodeName) => nodeName !== nextOrigin && nodeName !== nextDestination
+    );
+
     setCurrentOrigin(nextOrigin);
     setCurrentDestination(nextDestination);
-    setAvoidNodes(parsed.avoid_nodes);
+    setAvoidNodes(nextAvoidNodes);
 
-    const avoidedLabel = parsed.avoid_nodes.map(getNodeLabel).join(', ');
+    const avoidedLabel = nextAvoidNodes.map(getNodeLabel).join(', ');
 
-    if (changes.length > 0 || parsed.avoid_nodes.length > 0) {
+    if (changes.length > 0 || nextAvoidNodes.length > 0) {
       const summary = [...changes];
       if (avoidedLabel) {
         summary.push(`skip ${avoidedLabel}`);

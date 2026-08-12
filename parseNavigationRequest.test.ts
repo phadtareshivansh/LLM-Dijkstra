@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseNavigationRequest, PARSE_CACHE_TTL_MS, withTimeout } from './parseNavigationRequest';
+import {
+  PARSE_CACHE_MAX_ENTRIES,
+  parseNavigationRequest,
+  PARSE_CACHE_TTL_MS,
+  withTimeout,
+} from './parseNavigationRequest';
 
 describe('parseNavigationRequest', () => {
   it('extracts origin and destination from a from/to request', async () => {
@@ -125,6 +130,31 @@ describe('parseNavigationRequest caching', () => {
 
     expect(refreshed.destination).toBe('Library');
     expect(memoryStore.size).toBe(1);
+  });
+
+  it('evicts stale entries for other inputs when writing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    await parseNavigationRequest('take me to the library');
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z').getTime() + PARSE_CACHE_TTL_MS + 1);
+
+    await parseNavigationRequest('take me to the cafeteria');
+
+    const cachedKeys = Array.from(memoryStore.keys());
+
+    expect(cachedKeys.some((key) => key.includes('cafeteria'))).toBe(true);
+    expect(cachedKeys.some((key) => key.includes('library'))).toBe(false);
+    expect(memoryStore.size).toBe(1);
+  });
+
+  it('caps the number of cached entries', async () => {
+    for (let index = 0; index < PARSE_CACHE_MAX_ENTRIES + 10; index += 1) {
+      await parseNavigationRequest(`route number ${index} to the library`);
+    }
+
+    expect(memoryStore.size).toBeLessThanOrEqual(PARSE_CACHE_MAX_ENTRIES);
   });
 
   it('is a no-op when localStorage is unavailable', async () => {

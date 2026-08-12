@@ -21,7 +21,7 @@ export const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
 
 const PARSE_CACHE_KEY_PREFIX = 'dijkstra-navigator:parse:';
 export const PARSE_CACHE_TTL_MS = 30 * 60 * 1000;
-const PARSE_CACHE_MAX_ENTRIES = 50;
+export const PARSE_CACHE_MAX_ENTRIES = 50;
 
 interface CachedParseEntry {
   result: NavigationParseResult;
@@ -88,20 +88,26 @@ function parseCachedEntry(store: Storage, key: string): CachedParseEntry | null 
 /**
  * Removes expired entries and evicts the oldest entries when the cache grows
  * beyond PARSE_CACHE_MAX_ENTRIES, so the parse cache cannot grow unboundedly.
+ * Keys are collected before any removal to avoid index shifts during iteration.
  */
 function evictStaleCacheEntries(store: Storage): void {
-  const entries: Array<{ key: string; timestamp: number }> = [];
+  const keys: string[] = [];
 
   for (let index = 0; index < store.length; index += 1) {
     const key = store.key(index);
 
-    if (!key || !key.startsWith(PARSE_CACHE_KEY_PREFIX)) {
-      continue;
+    if (key?.startsWith(PARSE_CACHE_KEY_PREFIX)) {
+      keys.push(key);
     }
+  }
 
+  const now = Date.now();
+  const entries: Array<{ key: string; timestamp: number }> = [];
+
+  for (const key of keys) {
     const cached = parseCachedEntry(store, key);
 
-    if (!cached || Date.now() - cached.timestamp > PARSE_CACHE_TTL_MS) {
+    if (!cached || now - cached.timestamp > PARSE_CACHE_TTL_MS) {
       store.removeItem(key);
       continue;
     }
