@@ -111,6 +111,39 @@ describe('dijkstraShortestPath soft avoidance', () => {
   });
 });
 
+describe('dijkstraShortestPath accessible-only routing', () => {
+  it('prefers the stair path when accessibility is not enforced', () => {
+    const result = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library');
+
+    expect(result.distance).toBe(8);
+    expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
+  });
+
+  it('takes the longer accessible detour when stairs are excluded', () => {
+    const result = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], undefined, true);
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+  });
+
+  it('combines accessible-only with soft avoidance', () => {
+    const result = dijkstraShortestPath(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      'Library',
+      ['Hostel_A'],
+      { penalty: 100 },
+      true
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+  });
+});
+
 describe('dijkstraShortestPathWithWaypoints', () => {
   it('chains segments through a waypoint', () => {
     const result = dijkstraShortestPathWithWaypoints(
