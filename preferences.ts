@@ -1,3 +1,5 @@
+import { Algorithm } from './routingEngine';
+
 export const PREFERENCES_STORAGE_KEY = 'dijkstra-navigator-preferences';
 
 export const DEFAULT_PREFERENCES = {
@@ -6,6 +8,7 @@ export const DEFAULT_PREFERENCES = {
   speedMs: 920,
   softAvoidance: false,
   accessibleOnly: false,
+  algorithm: 'dijkstra',
 } as const;
 
 export type ViewModePreference = 'path' | 'dijkstra';
@@ -16,6 +19,7 @@ export interface Preferences {
   speedMs: number;
   softAvoidance: boolean;
   accessibleOnly: boolean;
+  algorithm: Algorithm;
 }
 
 export function loadPreferences(): Preferences {
@@ -44,6 +48,7 @@ export function loadPreferences(): Preferences {
         typeof parsed.softAvoidance === 'boolean' ? parsed.softAvoidance : DEFAULT_PREFERENCES.softAvoidance,
       accessibleOnly:
         typeof parsed.accessibleOnly === 'boolean' ? parsed.accessibleOnly : DEFAULT_PREFERENCES.accessibleOnly,
+      algorithm: parsed.algorithm === 'astar' ? 'astar' : 'dijkstra',
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
