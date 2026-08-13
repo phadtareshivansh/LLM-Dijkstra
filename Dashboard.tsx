@@ -1,5 +1,6 @@
-import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import RouteScene3D, { TraceStepSceneState } from './RouteScene3D';
+import React, { ChangeEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import type { TraceStepSceneState } from './RouteScene3D';
+const RouteScene3D = lazy(() => import('./RouteScene3D'));
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
 import { dijkstraShortestPathWithWaypoints, SoftAvoidanceConfig, dijkstraTrace, RoutingResult, UNREACHABLE_ERROR } from './routingEngine';
 import { kShortestPaths, AlternativeRoute } from './kShortestPaths';
@@ -9,6 +10,7 @@ import { parseNavigationRequest } from './parseNavigationRequest';
 import { TraceLogEntry, describeTraceStep } from './traceLog';
 import { formatNodeLabel as getNodeLabel } from './nodeLabels';
 import { loadPreferences, savePreferences } from './preferences';
+import { downloadGpx } from './gpxUtils';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -546,6 +548,7 @@ interface MapViewProps {
   onMinimize: () => void;
   onExpand: () => void;
   onShareLink: () => void;
+  onExportGpx: () => void;
   onSkip: () => void;
   onStepBack: () => void;
   onStepForward: () => void;
@@ -601,6 +604,7 @@ function MapView({
   onMinimize,
   onExpand,
   onShareLink,
+  onExportGpx,
   onSkip,
   onStepBack,
   onStepForward,
@@ -618,21 +622,32 @@ function MapView({
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
-      <RouteScene3D
-        nodes={CAMPUS_NODES}
-        edges={CAMPUS_EDGES}
-        activePath={routePath}
-        avoidNodes={avoidNodes}
-        stepIndex={sceneStepIndex}
-        zoomLevel={zoomLevel}
-        isThreeDimensional={isThreeDimensional}
-        variant="background"
-        showHud={false}
-        traceState={traceState}
-        traceEndpoints={traceEndpointPair}
-        showWeightLabels={showEdgeWeights}
-        onNodeClick={onNodeClick}
-      />
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-[#02080B]">
+            <div className="flex flex-col items-center gap-4 text-white/70">
+              <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/15 border-t-[#54F6BA]" />
+              <p className="text-sm">Loading 3D scene…</p>
+            </div>
+          </div>
+        }
+      >
+        <RouteScene3D
+          nodes={CAMPUS_NODES}
+          edges={CAMPUS_EDGES}
+          activePath={routePath}
+          avoidNodes={avoidNodes}
+          stepIndex={sceneStepIndex}
+          zoomLevel={zoomLevel}
+          isThreeDimensional={isThreeDimensional}
+          variant="background"
+          showHud={false}
+          traceState={traceState}
+          traceEndpoints={traceEndpointPair}
+          showWeightLabels={showEdgeWeights}
+          onNodeClick={onNodeClick}
+        />
+      </Suspense>
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[270px] bg-[linear-gradient(180deg,transparent,rgba(1,7,10,0.78)_46%,rgba(1,7,10,0.94)_100%)]" />
@@ -668,6 +683,7 @@ function MapView({
           onStartRoute={onStartRoute}
           onMinimize={onMinimize}
           onShareLink={onShareLink}
+          onExportGpx={onExportGpx}
           canAnimate={canAnimate}
         />
       )}
@@ -752,6 +768,7 @@ interface ControlPanelProps {
   onStartRoute: () => void;
   onMinimize: () => void;
   onShareLink: () => void;
+  onExportGpx: () => void;
   canAnimate: boolean;
 }
 
@@ -781,6 +798,7 @@ function ControlPanel({
   onStartRoute,
   onMinimize,
   onShareLink,
+  onExportGpx,
   canAnimate,
   routeCandidates,
   selectedRouteIndex,
@@ -893,6 +911,14 @@ function ControlPanel({
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-xs text-white/45">
+              Shortcuts: <kbd className="rounded border border-white/15 bg-white/5 px-1">Space</kbd>{' '}
+              play/pause · <kbd className="rounded border border-white/15 bg-white/5 px-1">←</kbd>{' '}
+              <kbd className="rounded border border-white/15 bg-white/5 px-1">→</kbd> step ·{' '}
+              <kbd className="rounded border border-white/15 bg-white/5 px-1">1</kbd>{' '}
+              <kbd className="rounded border border-white/15 bg-white/5 px-1">2</kbd>{' '}
+              <kbd className="rounded border border-white/15 bg-white/5 px-1">3</kbd> speed
+            </p>
           </div>
         </div>
 
@@ -1116,6 +1142,24 @@ function ControlPanel({
           </svg>
         )}
         {isShareCopied ? 'Link copied!' : 'Copy route link'}
+      </button>
+
+      <button
+        type="button"
+        onClick={onExportGpx}
+        disabled={!canAnimate}
+        className="mt-3 flex h-12 w-full items-center justify-center gap-3 rounded-md border border-white/18 bg-black/18 px-5 text-sm font-semibold text-white transition-colors hover:border-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-[#54F6BA]/70 disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        <svg className="h-5 w-5 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Export GPX
       </button>
 
       <div className="mt-6 rounded-md border border-white/10 bg-white/[0.035] p-5">
@@ -1400,6 +1444,51 @@ export function Dashboard() {
     return () => window.clearTimeout(timeoutId);
   }, [effectiveCanAnimate, effectiveTotalSteps, isAnimationRunning, routeStepMs, timelineStep]);
 
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      return (
+        target.isContentEditable ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT'
+      );
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return;
+      }
+
+      switch (event.key) {
+        case ' ':
+          event.preventDefault();
+          handleTogglePause();
+          break;
+        case 'ArrowLeft':
+          handleStepBack();
+          break;
+        case 'ArrowRight':
+          handleStepForward();
+          break;
+        case '1':
+          handleSpeedChange(SPEED_PRESETS[0].ms);
+          break;
+        case '2':
+          handleSpeedChange(SPEED_PRESETS[1].ms);
+          break;
+        case '3':
+          handleSpeedChange(SPEED_PRESETS[2].ms);
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSpeedChange, handleStepBack, handleStepForward, handleTogglePause]);
+
   function handleOriginChange(value: string) {
     setCurrentOrigin(value);
     setAvoidNodes([]);
@@ -1498,8 +1587,7 @@ export function Dashboard() {
     );
   }
 
-  function handleShareLink() {
-    if (typeof window === 'undefined') {
+  function handleShareLink() {    if (typeof window === 'undefined') {
       return;
     }
 
@@ -1532,6 +1620,22 @@ export function Dashboard() {
         tone: 'error',
       });
     }
+  }
+
+  function handleSpeedChange(ms: number) {
+    setPreferences((current) => ({ ...current, speedMs: ms }));
+  }
+
+  function handleExportGpx() {
+    if (effectiveRoutePath.length === 0) {
+      return;
+    }
+
+    downloadGpx(effectiveRoutePath, CAMPUS_NODES, {
+      name: `${currentOrigin} to ${currentDestination}`,
+      distance: effectiveDistance,
+      filename: 'dijkstra-route.gpx',
+    });
   }
 
   function handleTogglePause() {
@@ -1643,7 +1747,7 @@ export function Dashboard() {
       setPreferences((current) => ({ ...current, showEdgeWeights: !current.showEdgeWeights })),
     onToggleSoftAvoidance: () =>
       setPreferences((current) => ({ ...current, softAvoidance: !current.softAvoidance })),
-    onSpeedChange: (ms) => setPreferences((current) => ({ ...current, speedMs: ms })),
+    onSpeedChange: handleSpeedChange,
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
     onDestinationChange: handleDestinationChange,
@@ -1656,6 +1760,7 @@ export function Dashboard() {
     onMinimize: () => setIsPanelMinimized(true),
     onExpand: () => setIsPanelMinimized(false),
     onShareLink: handleShareLink,
+    onExportGpx: handleExportGpx,
     onSkip: handleSkipAnimation,
     onStepBack: handleStepBack,
     onStepForward: handleStepForward,
