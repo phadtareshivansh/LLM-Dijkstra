@@ -11,6 +11,7 @@ import { TraceLogEntry, describeTraceStep } from './traceLog';
 import { formatNodeLabel as getNodeLabel } from './nodeLabels';
 import { loadPreferences, savePreferences } from './preferences';
 import { downloadGpx } from './gpxUtils';
+import { buildElevationProfile, elevationStats } from './elevationUtils';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -504,6 +505,81 @@ function MapControls({
   );
 }
 
+const ELEVATION_CHART_WIDTH = 320;
+const ELEVATION_CHART_HEIGHT = 96;
+const ELEVATION_CHART_PADDING = 6;
+
+function ElevationProfile({ path }: { path: string[] }) {
+  const profile = useMemo(() => buildElevationProfile(path, CAMPUS_NODES), [path]);
+  const stats = useMemo(() => elevationStats(profile), [profile]);
+
+  if (profile.length < 2) {
+    return null;
+  }
+
+  const elevationRange = Math.max(1, stats.max - stats.min);
+  const pointX = (step: number) =>
+    ELEVATION_CHART_PADDING + (step / Math.max(1, profile.length - 1)) * (ELEVATION_CHART_WIDTH - ELEVATION_CHART_PADDING * 2);
+  const pointY = (elevation: number) =>
+    ELEVATION_CHART_HEIGHT -
+    ELEVATION_CHART_PADDING -
+    ((elevation - stats.min) / elevationRange) * (ELEVATION_CHART_HEIGHT - ELEVATION_CHART_PADDING * 2);
+
+  const linePoints = profile.map((point) => `${pointX(point.step)},${pointY(point.elevation)}`).join(' ');
+  const areaPoints = `${pointX(0)},${ELEVATION_CHART_HEIGHT - ELEVATION_CHART_PADDING} ${linePoints} ${pointX(profile[profile.length - 1].step)},${ELEVATION_CHART_HEIGHT - ELEVATION_CHART_PADDING}`;
+
+  return (
+    <details className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-5">
+      <summary className="cursor-pointer text-sm font-semibold text-white/90">Elevation profile</summary>
+      <div className="mt-3">
+        <svg
+          viewBox={`0 0 ${ELEVATION_CHART_WIDTH} ${ELEVATION_CHART_HEIGHT}`}
+          className="w-full rounded-md border border-white/10 bg-[#02080B]"
+          role="img"
+          aria-label={`Elevation profile from ${profile[0].node} to ${profile[profile.length - 1].node}`}
+        >
+          <polygon points={areaPoints} fill="rgba(84, 246, 186, 0.12)" />
+          <polyline points={linePoints} fill="none" stroke="#54F6BA" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          {profile.map((point) => (
+            <circle
+              key={point.node}
+              cx={pointX(point.step)}
+              cy={pointY(point.elevation)}
+              r="2.6"
+              fill="#02080B"
+              stroke="#54F6BA"
+              strokeWidth="1.4"
+            />
+          ))}
+        </svg>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-md border border-white/10 bg-black/18 px-2 py-2">
+            <span className="block font-semibold text-white/90">Ascent</span>
+            <span className="font-mono tabular-nums text-emerald-300">+{stats.ascent}m</span>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/18 px-2 py-2">
+            <span className="block font-semibold text-white/90">Descent</span>
+            <span className="font-mono tabular-nums text-sky-300">-{stats.descent}m</span>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/18 px-2 py-2">
+            <span className="block font-semibold text-white/90">Net</span>
+            <span className="font-mono tabular-nums text-white/82">{stats.net >= 0 ? '+' : ''}{stats.net}m</span>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-white/45">
+          {profile.map((point, index) => (
+            <span key={point.node}>
+              {index > 0 && <span className="mx-1 text-white/30">→</span>}
+              <span className="font-medium text-white/70">{getNodeLabel(point.node)}</span>
+              <span className="ml-1 font-mono text-white/45">{point.elevation}m</span>
+            </span>
+          ))}
+        </p>
+      </div>
+    </details>
+  );
+}
+
 interface MapViewProps {
   origin: string;
   destination: string;
@@ -529,6 +605,7 @@ interface MapViewProps {
   showEdgeWeights: boolean;
   speedMs: number;
   softAvoidance: boolean;
+  accessibleOnly: boolean;
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
   traceState: TraceStepSceneState | null;
@@ -536,6 +613,7 @@ interface MapViewProps {
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
   onToggleSoftAvoidance: () => void;
+  onToggleAccessibleOnly: () => void;
   onSpeedChange: (ms: number) => void;
   onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
@@ -585,6 +663,7 @@ function MapView({
   showEdgeWeights,
   speedMs,
   softAvoidance,
+  accessibleOnly,
   routeCandidates,
   selectedRouteIndex,
   traceState,
@@ -592,6 +671,7 @@ function MapView({
   onViewModeChange,
   onToggleEdgeWeights,
   onToggleSoftAvoidance,
+  onToggleAccessibleOnly,
   onSpeedChange,
   onNodeClick,
   onOriginChange,
@@ -668,12 +748,14 @@ function MapView({
           showEdgeWeights={showEdgeWeights}
           speedMs={speedMs}
           softAvoidance={softAvoidance}
+          accessibleOnly={accessibleOnly}
           stepLog={stepLog}
           routeCandidates={routeCandidates}
           selectedRouteIndex={selectedRouteIndex}
           onViewModeChange={onViewModeChange}
           onToggleEdgeWeights={onToggleEdgeWeights}
           onToggleSoftAvoidance={onToggleSoftAvoidance}
+          onToggleAccessibleOnly={onToggleAccessibleOnly}
           onSpeedChange={onSpeedChange}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
@@ -753,12 +835,14 @@ interface ControlPanelProps {
   showEdgeWeights: boolean;
   speedMs: number;
   softAvoidance: boolean;
+  accessibleOnly: boolean;
   stepLog: TraceLogEntry[];
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
   onViewModeChange: (mode: ViewMode) => void;
   onToggleEdgeWeights: () => void;
   onToggleSoftAvoidance: () => void;
+  onToggleAccessibleOnly: () => void;
   onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
@@ -785,10 +869,12 @@ function ControlPanel({
   showEdgeWeights,
   speedMs,
   softAvoidance,
+  accessibleOnly,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
   onToggleSoftAvoidance,
+  onToggleAccessibleOnly,
   onSpeedChange,
   onOriginChange,
   onDestinationChange,
@@ -931,6 +1017,16 @@ function ControlPanel({
               onChange={() => onToggleSoftAvoidance()}
               className="h-4 w-4 cursor-pointer accent-[#54F6BA]"
               aria-label="Soft avoid"
+            />
+          </label>
+          <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
+            <span>Accessible route only</span>
+            <input
+              type="checkbox"
+              checked={accessibleOnly}
+              onChange={() => onToggleAccessibleOnly()}
+              className="h-4 w-4 cursor-pointer accent-[#54F6BA]"
+              aria-label="Accessible route only"
             />
           </label>
         </div>
@@ -1101,6 +1197,8 @@ function ControlPanel({
         </details>
       ) : null}
 
+      {viewMode === 'path' && routePath.length > 0 ? <ElevationProfile path={routePath} /> : null}
+
       <button
         type="button"
         onClick={onStartRoute}
@@ -1243,7 +1341,7 @@ export function Dashboard() {
 
     return loaded;
   });
-  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance } = preferences;
+  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly } = preferences;
   const shareResetTimeoutRef = useRef<number | null>(null);
 
   const routeCandidates = useMemo(() => {
@@ -1257,14 +1355,15 @@ export function Dashboard() {
         waypoints,
         currentDestination,
         avoidNodes,
-        softAvoidanceConfig
+        softAvoidanceConfig,
+        accessibleOnly
       );
 
       return result.error ? [] : [{ path: result.path, distance: result.distance }];
     }
 
-    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig);
-  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance]);
+    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly);
+  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance, accessibleOnly]);
 
   useEffect(() => {
     setSelectedRouteIndex(0);
@@ -1731,6 +1830,7 @@ export function Dashboard() {
     routeIndex: safeRouteIndex,
     routeCount: isDijkstraMode ? 1 : routeCandidates.length,
     softAvoidance,
+    accessibleOnly,
     routeCandidates,
     selectedRouteIndex: safeRouteIndex,
     aiPrompt,
@@ -1747,6 +1847,8 @@ export function Dashboard() {
       setPreferences((current) => ({ ...current, showEdgeWeights: !current.showEdgeWeights })),
     onToggleSoftAvoidance: () =>
       setPreferences((current) => ({ ...current, softAvoidance: !current.softAvoidance })),
+    onToggleAccessibleOnly: () =>
+      setPreferences((current) => ({ ...current, accessibleOnly: !current.accessibleOnly })),
     onSpeedChange: handleSpeedChange,
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
