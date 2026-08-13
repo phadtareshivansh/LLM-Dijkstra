@@ -179,4 +179,56 @@ describe('parseNavigationRequest caching', () => {
 
     expect(parsed.destination).toBe('Auditorium');
   });
+
+  it('skips the cache for contextual follow-ups', async () => {
+    await parseNavigationRequest('avoid the cafeteria', {
+      origin: 'Main_Gate',
+      destination: 'Library',
+      avoid_nodes: [],
+    });
+
+    const cachedKeys = Array.from(memoryStore.keys());
+
+    expect(cachedKeys.some((key) => key.includes('cafeteria'))).toBe(false);
+  });
+});
+
+describe('parseNavigationRequest with conversation context', () => {
+  const context = {
+    origin: 'Main_Gate',
+    destination: 'Library',
+    avoid_nodes: ['Hostel_A'],
+  };
+
+  it('keeps the current endpoints when the follow-up only adds an avoid', async () => {
+    const parsed = await parseNavigationRequest('avoid the cafeteria', context);
+
+    expect(parsed.origin).toBe('Main_Gate');
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual(['Hostel_A', 'Cafeteria']);
+  });
+
+  it('replaces avoids when the follow-up says "instead"', async () => {
+    const parsed = await parseNavigationRequest('skip the cafeteria instead', context);
+
+    expect(parsed.origin).toBe('Main_Gate');
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual(['Cafeteria']);
+  });
+
+  it('lets new endpoints override the context', async () => {
+    const parsed = await parseNavigationRequest('from cafeteria to the auditorium', context);
+
+    expect(parsed.origin).toBe('Cafeteria');
+    expect(parsed.destination).toBe('Auditorium');
+    expect(parsed.avoid_nodes).toEqual(['Hostel_A']);
+  });
+
+  it('is a no-op when the follow-up mentions nothing', async () => {
+    const parsed = await parseNavigationRequest('what about the weather', context);
+
+    expect(parsed.origin).toBe('Main_Gate');
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual(['Hostel_A']);
+  });
 });
