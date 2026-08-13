@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { astarShortestPath } from './astar';
 import { kShortestPaths, pathDistance } from './kShortestPaths';
 import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
 
@@ -92,6 +93,14 @@ describe('kShortestPaths', () => {
     expect(routes).toHaveLength(1);
     expect(routes[0].path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
     expect(routes[0].distance).toBe(9);
+  });
+
+  it('finds the same alternatives with A* as the search function', () => {
+    const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], 3, undefined, false, astarShortestPath);
+
+    expect(routes).toHaveLength(2);
+    expect(routes[0].path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
+    expect(routes[1].path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
   });
 });
 
