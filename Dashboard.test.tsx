@@ -107,4 +107,13 @@ describe('Dashboard', () => {
 
     expect(screen.getByRole('button', { name: 'Fast' })).toHaveAttribute('aria-pressed', 'false');
   });
+
+  it('switches the search algorithm to A*', () => {
+    render(<Dashboard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'A*' }));
+
+    expect(screen.getByRole('button', { name: 'A*' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Dijkstra' })).toHaveAttribute('aria-pressed', 'false');
+  });
 });
