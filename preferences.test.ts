@@ -16,8 +16,8 @@ describe('preferences', () => {
   });
 
   it('round-trips saved preferences', () => {
-    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false });
-    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false });
+    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true });
+    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true });
   });
 
   it('falls back to defaults for invalid or partial values', () => {
