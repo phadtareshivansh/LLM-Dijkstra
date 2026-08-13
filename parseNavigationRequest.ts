@@ -6,6 +6,40 @@ export interface NavigationParseResult {
   avoid_nodes: string[];
 }
 
+export interface ConversationContext {
+  origin: string | null;
+  destination: string | null;
+  avoid_nodes: string[];
+}
+
+const REPLACE_AVOID_KEYWORD_PATTERN = /\binstead\b/i;
+
+function buildContextPrompt(userInput: string, context: ConversationContext): string {
+  const avoidedLabel = context.avoid_nodes.length > 0 ? context.avoid_nodes.join(', ') : 'none';
+
+  return [
+    `Previous state: origin=${context.origin ?? 'unknown'}, destination=${context.destination ?? 'unknown'}, avoiding=${avoidedLabel}.`,
+    `The user is refining that route. Follow-up request: ${userInput}`,
+  ].join(' ');
+}
+
+function mergeWithContext(
+  userInput: string,
+  parsed: NavigationParseResult,
+  context: ConversationContext
+): NavigationParseResult {
+  const replacesAvoids = REPLACE_AVOID_KEYWORD_PATTERN.test(userInput);
+  const avoid_nodes = replacesAvoids
+    ? parsed.avoid_nodes
+    : uniqueNodeNames([...context.avoid_nodes, ...parsed.avoid_nodes]);
+
+  return {
+    origin: parsed.origin ?? context.origin,
+    destination: parsed.destination ?? context.destination,
+    avoid_nodes,
+  };
+}
+
 const SYSTEM_PROMPT = [
   'You extract navigation parameters from a user request.',
   `Valid node names are: ${CAMPUS_NODE_NAMES.join(', ')}.`,
@@ -278,13 +312,14 @@ function mergeParseResults(primary: NavigationParseResult, fallback: NavigationP
   };
 }
 
-async function parseWithGemini(userInput: string): Promise<NavigationParseResult> {
+async function parseWithGemini(userInput: string, context?: ConversationContext): Promise<NavigationParseResult> {
   const { GoogleGenAI, Type } = await import('@google/genai');
   const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+  const prompt = context ? buildContextPrompt(userInput, context) : userInput;
 
   const request = ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: userInput,
+    contents: prompt,
     config: {
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: 'application/json',
@@ -326,8 +361,11 @@ async function parseWithGemini(userInput: string): Promise<NavigationParseResult
   return sanitizeNavigationParseResult(JSON.parse(rawText) as NavigationParseResult);
 }
 
-export async function parseNavigationRequest(userInput: string): Promise<NavigationParseResult> {
-  const cachedParse = getCachedParse(userInput);
+export async function parseNavigationRequest(
+  userInput: string,
+  context?: ConversationContext
+): Promise<NavigationParseResult> {
+  const cachedParse = context ? null : getCachedParse(userInput);
 
   if (cachedParse) {
     return cachedParse;
@@ -337,10 +375,14 @@ export async function parseNavigationRequest(userInput: string): Promise<Navigat
   let parseResult: NavigationParseResult;
 
   try {
-    const geminiParse = await parseWithGemini(userInput);
+    const geminiParse = await parseWithGemini(userInput, context);
     parseResult = mergeParseResults(geminiParse, fallbackParse);
   } catch {
     parseResult = fallbackParse;
+  }
+
+  if (context) {
+    return mergeWithContext(userInput, parseResult, context);
   }
 
   setCachedParse(userInput, parseResult);
