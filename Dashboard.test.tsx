@@ -1,6 +1,37 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Dashboard from './Dashboard';
+
+vi.mock('./RouteScene3D', () => {
+  const nodeLabel = (name: string) =>
+    name === 'Main_Gate' ? 'Main Entrance' : name.replace(/_/g, ' ');
+
+  return {
+    default: ({
+      nodes,
+      avoidNodes,
+      onNodeClick,
+    }: {
+      nodes: { name: string }[];
+      avoidNodes: string[];
+      onNodeClick?: (nodeName: string) => void;
+    }) => (
+      <div data-testid="mock-scene">
+        {nodes.map((node) => {
+          const isAvoided = avoidNodes.includes(node.name);
+          return (
+            <button
+              key={node.name}
+              type="button"
+              onClick={() => onNodeClick?.(node.name)}
+              aria-label={`${isAvoided ? 'Unavoid' : 'Avoid'} ${nodeLabel(node.name)}`}
+            />
+          );
+        })}
+      </div>
+    ),
+  };
+});
 
 describe('Dashboard', () => {
   it('renders the route planning controls', () => {
@@ -24,24 +55,24 @@ describe('Dashboard', () => {
     expect(screen.getByRole('button', { name: 'Run trace' })).toBeInTheDocument();
   });
 
-  it('cannot avoid the start or end point', () => {
+  it('cannot avoid the start or end point', async () => {
     render(<Dashboard />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Avoid Main Entrance' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avoid Main Entrance' }));
 
     expect(screen.getByText('You cannot avoid the start or end point.')).toBeInTheDocument();
   });
 
-  it('toggles a neutral node as avoided from the map', () => {
+  it('toggles a neutral node as avoided from the map', async () => {
     render(<Dashboard />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Avoid Hostel A' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avoid Hostel A' }));
 
-    expect(screen.getByRole('button', { name: 'Unavoid Hostel A' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Unavoid Hostel A' })).toBeInTheDocument();
     expect(screen.getByText(/Skipping Hostel A/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Unavoid Hostel A' }));
-    expect(screen.getByRole('button', { name: 'Avoid Hostel A' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Avoid Hostel A' })).toBeInTheDocument();
   });
 
   it('swaps source and destination', () => {
@@ -53,5 +84,27 @@ describe('Dashboard', () => {
     const destinationSelect = screen.getByLabelText('Destination') as HTMLSelectElement;
     expect(sourceSelect.value).toBe('Library');
     expect(destinationSelect.value).toBe('Main_Gate');
+  });
+
+  it('applies speed presets with the 1/2/3 keyboard shortcuts', () => {
+    render(<Dashboard />);
+
+    fireEvent.keyDown(window, { key: '1' });
+    expect(screen.getByRole('button', { name: 'Slow' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.keyDown(window, { key: '2' });
+    expect(screen.getByRole('button', { name: 'Normal' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.keyDown(window, { key: '3' });
+    expect(screen.getByRole('button', { name: 'Fast' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('ignores keyboard shortcuts while typing in a text field', () => {
+    render(<Dashboard />);
+
+    const aiInput = screen.getByLabelText('Ask AI to plan a route');
+    fireEvent.keyDown(aiInput, { key: '3' });
+
+    expect(screen.getByRole('button', { name: 'Fast' })).toHaveAttribute('aria-pressed', 'false');
   });
 });
