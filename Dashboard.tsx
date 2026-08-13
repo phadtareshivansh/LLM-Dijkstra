@@ -2,7 +2,8 @@ import React, { ChangeEvent, Suspense, lazy, useEffect, useMemo, useRef, useStat
 import type { TraceStepSceneState } from './RouteScene3D';
 const RouteScene3D = lazy(() => import('./RouteScene3D'));
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
-import { dijkstraShortestPathWithWaypoints, SoftAvoidanceConfig, dijkstraTrace, RoutingResult, UNREACHABLE_ERROR } from './routingEngine';
+import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints, dijkstraTrace, Algorithm, RoutingResult, SearchFunction, UNREACHABLE_ERROR } from './routingEngine';
+import { astarShortestPath } from './astar';
 import { kShortestPaths, AlternativeRoute } from './kShortestPaths';
 import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
@@ -606,6 +607,7 @@ interface MapViewProps {
   speedMs: number;
   softAvoidance: boolean;
   accessibleOnly: boolean;
+  algorithm: Algorithm;
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
   traceState: TraceStepSceneState | null;
@@ -614,6 +616,7 @@ interface MapViewProps {
   onToggleEdgeWeights: () => void;
   onToggleSoftAvoidance: () => void;
   onToggleAccessibleOnly: () => void;
+  onAlgorithmChange: (algorithm: Algorithm) => void;
   onSpeedChange: (ms: number) => void;
   onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
@@ -664,6 +667,7 @@ function MapView({
   speedMs,
   softAvoidance,
   accessibleOnly,
+  algorithm,
   routeCandidates,
   selectedRouteIndex,
   traceState,
@@ -672,6 +676,7 @@ function MapView({
   onToggleEdgeWeights,
   onToggleSoftAvoidance,
   onToggleAccessibleOnly,
+  onAlgorithmChange,
   onSpeedChange,
   onNodeClick,
   onOriginChange,
@@ -749,6 +754,7 @@ function MapView({
           speedMs={speedMs}
           softAvoidance={softAvoidance}
           accessibleOnly={accessibleOnly}
+          algorithm={algorithm}
           stepLog={stepLog}
           routeCandidates={routeCandidates}
           selectedRouteIndex={selectedRouteIndex}
@@ -756,6 +762,7 @@ function MapView({
           onToggleEdgeWeights={onToggleEdgeWeights}
           onToggleSoftAvoidance={onToggleSoftAvoidance}
           onToggleAccessibleOnly={onToggleAccessibleOnly}
+          onAlgorithmChange={onAlgorithmChange}
           onSpeedChange={onSpeedChange}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
@@ -836,6 +843,7 @@ interface ControlPanelProps {
   speedMs: number;
   softAvoidance: boolean;
   accessibleOnly: boolean;
+  algorithm: Algorithm;
   stepLog: TraceLogEntry[];
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
@@ -843,6 +851,7 @@ interface ControlPanelProps {
   onToggleEdgeWeights: () => void;
   onToggleSoftAvoidance: () => void;
   onToggleAccessibleOnly: () => void;
+  onAlgorithmChange: (algorithm: Algorithm) => void;
   onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
@@ -870,11 +879,13 @@ function ControlPanel({
   speedMs,
   softAvoidance,
   accessibleOnly,
+  algorithm,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
   onToggleSoftAvoidance,
   onToggleAccessibleOnly,
+  onAlgorithmChange,
   onSpeedChange,
   onOriginChange,
   onDestinationChange,
@@ -967,6 +978,40 @@ function ControlPanel({
             >
               Dijkstra trace
             </button>
+          </div>
+          <div className="mt-3">
+            <span className="mb-2 block text-sm font-semibold text-white">Search algorithm</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onAlgorithmChange('dijkstra')}
+                disabled={viewMode === 'dijkstra'}
+                aria-pressed={algorithm === 'dijkstra'}
+                className={`flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  algorithm === 'dijkstra'
+                    ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                    : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+                }`}
+              >
+                Dijkstra
+              </button>
+              <button
+                type="button"
+                onClick={() => onAlgorithmChange('astar')}
+                disabled={viewMode === 'dijkstra'}
+                aria-pressed={algorithm === 'astar'}
+                className={`flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  algorithm === 'astar'
+                    ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                    : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+                }`}
+              >
+                A*
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-white/45">
+              A* guides the search with distance estimates; trace mode always shows classic Dijkstra.
+            </p>
           </div>
           <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
             <span>Show edge weights</span>
@@ -1341,11 +1386,12 @@ export function Dashboard() {
 
     return loaded;
   });
-  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly } = preferences;
+  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly, algorithm } = preferences;
   const shareResetTimeoutRef = useRef<number | null>(null);
 
   const routeCandidates = useMemo(() => {
     const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
+    const search: SearchFunction = algorithm === 'astar' ? astarShortestPath : dijkstraShortestPath;
 
     if (waypoints.length > 0) {
       const result = dijkstraShortestPathWithWaypoints(
@@ -1356,14 +1402,15 @@ export function Dashboard() {
         currentDestination,
         avoidNodes,
         softAvoidanceConfig,
-        accessibleOnly
+        accessibleOnly,
+        search
       );
 
       return result.error ? [] : [{ path: result.path, distance: result.distance }];
     }
 
-    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly);
-  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance, accessibleOnly]);
+    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly, search);
+  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance, accessibleOnly, algorithm]);
 
   useEffect(() => {
     setSelectedRouteIndex(0);
@@ -1616,7 +1663,11 @@ export function Dashboard() {
     setAiParseState('parsing');
     setAiFeedback(null);
 
-    const parsed = await parseNavigationRequest(query);
+    const parsed = await parseNavigationRequest(query, {
+      origin: currentOrigin,
+      destination: currentDestination,
+      avoid_nodes: avoidNodes,
+    });
 
     let nextOrigin = parsed.origin ?? currentOrigin;
     let nextDestination = parsed.destination ?? currentDestination;
@@ -1831,6 +1882,7 @@ export function Dashboard() {
     routeCount: isDijkstraMode ? 1 : routeCandidates.length,
     softAvoidance,
     accessibleOnly,
+    algorithm,
     routeCandidates,
     selectedRouteIndex: safeRouteIndex,
     aiPrompt,
@@ -1849,6 +1901,8 @@ export function Dashboard() {
       setPreferences((current) => ({ ...current, softAvoidance: !current.softAvoidance })),
     onToggleAccessibleOnly: () =>
       setPreferences((current) => ({ ...current, accessibleOnly: !current.accessibleOnly })),
+    onAlgorithmChange: (nextAlgorithm) =>
+      setPreferences((current) => ({ ...current, algorithm: nextAlgorithm })),
     onSpeedChange: handleSpeedChange,
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
