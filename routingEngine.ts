@@ -1,4 +1,4 @@
-import { Edge, Node } from './themeConstants';
+import { ACCESSIBLE_TAG, Edge, Node } from './themeConstants';
 
 export interface RoutingResult {
   path: string[];
@@ -51,19 +51,28 @@ function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]
   return adjacency;
 }
 
+function isAccessibleEdge(edge: Edge, accessibleOnly: boolean): boolean {
+  return !accessibleOnly || (edge.tags?.includes(ACCESSIBLE_TAG) ?? false);
+}
+
+function buildAccessibleAdjacencyMap(nodes: Node[], edges: Edge[], accessibleOnly: boolean): Map<string, Neighbor[]> {
+  return buildAdjacencyMap(nodes, edges.filter((edge) => isAccessibleEdge(edge, accessibleOnly)));
+}
+
 export function dijkstraShortestPath(
   nodes: Node[],
   edges: Edge[],
   start: string,
   end: string,
   avoidNodes: string[] = [],
-  softAvoidance?: SoftAvoidanceConfig
+  softAvoidance?: SoftAvoidanceConfig,
+  accessibleOnly = false
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
   const avoidSet = softAvoidance ? new Set<string>() : new Set(avoidNodes);
   const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
-  const adjacency = buildAdjacencyMap(nodes, edges);
+  const adjacency = buildAccessibleAdjacencyMap(nodes, edges, accessibleOnly);
 
   if (!nodeIds.has(start)) {
     return {
@@ -167,7 +176,8 @@ export function dijkstraShortestPathWithWaypoints(
   waypoints: string[],
   end: string,
   avoidNodes: string[] = [],
-  softAvoidance?: SoftAvoidanceConfig
+  softAvoidance?: SoftAvoidanceConfig,
+  accessibleOnly = false
 ): RoutingResult {
   const allPoints = [start, ...waypoints, end];
   const segments: RoutingResult[] = [];
@@ -178,7 +188,7 @@ export function dijkstraShortestPathWithWaypoints(
     const segmentStart = allPoints[index];
     const segmentEnd = allPoints[index + 1];
 
-    const segmentResult = dijkstraShortestPath(nodes, edges, segmentStart, segmentEnd, avoidNodes, softAvoidance);
+    const segmentResult = dijkstraShortestPath(nodes, edges, segmentStart, segmentEnd, avoidNodes, softAvoidance, accessibleOnly);
 
     if (segmentResult.error) {
       return {
