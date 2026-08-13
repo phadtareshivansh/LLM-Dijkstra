@@ -1,4 +1,9 @@
-import { Edge } from './themeConstants';
+import { ACCESSIBLE_TAG, Edge, Node } from './themeConstants';
+
+export interface Neighbor {
+  nodeName: string;
+  weight: number;
+}
 
 export function buildEdgeWeightMap(edges: Edge[]): Map<string, number> {
   const weightMap = new Map<string, number>();
@@ -26,4 +31,51 @@ export function pathDistance(path: string[], edges: Edge[]): number {
   }
 
   return totalDistance;
+}
+
+export function getNodeIds(nodes: Node[]): Set<string> {
+  return new Set(nodes.map((node) => node.name));
+}
+
+export function reconstructPath(previousByNode: ReadonlyMap<string, string>, end: string): string[] {
+  const path: string[] = [];
+  let current: string | undefined = end;
+
+  while (current) {
+    path.unshift(current);
+    current = previousByNode.get(current);
+  }
+
+  return path;
+}
+
+export function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]> {
+  const adjacency = new Map<string, Neighbor[]>();
+
+  for (const node of nodes) {
+    adjacency.set(node.name, []);
+  }
+
+  for (const edge of edges) {
+    adjacency.get(edge.from)?.push({ nodeName: edge.to, weight: edge.weight });
+    adjacency.get(edge.to)?.push({ nodeName: edge.from, weight: edge.weight });
+  }
+
+  return adjacency;
+}
+
+export function isAccessibleEdge(edge: Edge, accessibleOnly: boolean): boolean {
+  return !accessibleOnly || (edge.tags?.includes(ACCESSIBLE_TAG) ?? false);
+}
+
+export function buildAccessibleAdjacencyMap(
+  nodes: Node[],
+  edges: Edge[],
+  accessibleOnly: boolean
+): Map<string, Neighbor[]> {
+  return buildAdjacencyMap(nodes, edges.filter((edge) => isAccessibleEdge(edge, accessibleOnly)));
+}
+
+export function euclideanDistance(a: Pick<Node, 'x' | 'y'>, b: Pick<Node, 'x' | 'y'>): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
