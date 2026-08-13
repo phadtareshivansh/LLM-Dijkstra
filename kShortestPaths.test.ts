@@ -85,6 +85,14 @@ describe('kShortestPaths', () => {
     expect(routes[0].path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
     expect(signatures).toContain('Main_Gate->Auditorium->Hostel_A->Library');
   });
+
+  it('only offers accessible routes when accessible-only is enabled', () => {
+    const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], 3, undefined, true);
+
+    expect(routes).toHaveLength(1);
+    expect(routes[0].path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+    expect(routes[0].distance).toBe(9);
+  });
 });
 
 describe('pathDistance', () => {
