@@ -5,6 +5,7 @@ export const DEFAULT_PREFERENCES = {
   showEdgeWeights: true,
   speedMs: 920,
   softAvoidance: false,
+  accessibleOnly: false,
 } as const;
 
 export type ViewModePreference = 'path' | 'dijkstra';
@@ -14,6 +15,7 @@ export interface Preferences {
   showEdgeWeights: boolean;
   speedMs: number;
   softAvoidance: boolean;
+  accessibleOnly: boolean;
 }
 
 export function loadPreferences(): Preferences {
@@ -40,6 +42,8 @@ export function loadPreferences(): Preferences {
           : DEFAULT_PREFERENCES.speedMs,
       softAvoidance:
         typeof parsed.softAvoidance === 'boolean' ? parsed.softAvoidance : DEFAULT_PREFERENCES.softAvoidance,
+      accessibleOnly:
+        typeof parsed.accessibleOnly === 'boolean' ? parsed.accessibleOnly : DEFAULT_PREFERENCES.accessibleOnly,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
