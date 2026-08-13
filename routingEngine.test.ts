@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { astarShortestPath } from './astar';
 import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints } from './routingEngine';
 import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
 
@@ -227,5 +228,23 @@ describe('dijkstraShortestPathWithWaypoints', () => {
     expect(result.segments).toEqual([
       { path: ['Main_Gate', 'Auditorium', 'Hostel_A', 'Library'], distance: 8 },
     ]);
+  });
+
+  it('chains segments with a custom search function', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      ['Cafeteria'],
+      'Library',
+      [],
+      undefined,
+      false,
+      astarShortestPath
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
   });
 });
