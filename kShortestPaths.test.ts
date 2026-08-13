@@ -68,6 +68,23 @@ describe('kShortestPaths', () => {
 
     expect(routes).toEqual([]);
   });
+
+  it('ranks the detour first when soft avoidance penalizes the shortest path', () => {
+    const routes = kShortestPaths(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      'Library',
+      ['Hostel_A'],
+      3,
+      { penalty: 100 }
+    );
+
+    const signatures = routes.map((route) => route.path.join('->'));
+
+    expect(routes[0].path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+    expect(signatures).toContain('Main_Gate->Auditorium->Hostel_A->Library');
+  });
 });
 
 describe('pathDistance', () => {
