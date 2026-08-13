@@ -1,4 +1,9 @@
-import { ACCESSIBLE_TAG, Edge, Node } from './themeConstants';
+import { Edge, Node } from './themeConstants';
+import {
+  buildAccessibleAdjacencyMap,
+  getNodeIds,
+  reconstructPath,
+} from './graphUtils';
 
 export interface RoutingResult {
   path: string[];
@@ -13,51 +18,19 @@ export interface SoftAvoidanceConfig {
   penalty: number;
 }
 
+export type Algorithm = 'dijkstra' | 'astar';
+
+export type SearchFunction = (
+  nodes: Node[],
+  edges: Edge[],
+  start: string,
+  end: string,
+  avoidNodes: string[],
+  softAvoidance?: SoftAvoidanceConfig,
+  accessibleOnly?: boolean
+) => RoutingResult;
+
 const DEFAULT_SOFT_PENALTY = 100;
-
-interface Neighbor {
-  nodeName: string;
-  weight: number;
-}
-
-function getNodeIds(nodes: Node[]): Set<string> {
-  return new Set(nodes.map((node) => node.name));
-}
-
-function reconstructPath(previousByNode: ReadonlyMap<string, string>, end: string): string[] {
-  const path: string[] = [];
-  let current: string | undefined = end;
-
-  while (current) {
-    path.unshift(current);
-    current = previousByNode.get(current);
-  }
-
-  return path;
-}
-
-function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]> {
-  const adjacency = new Map<string, Neighbor[]>();
-
-  for (const node of nodes) {
-    adjacency.set(node.name, []);
-  }
-
-  for (const edge of edges) {
-    adjacency.get(edge.from)?.push({ nodeName: edge.to, weight: edge.weight });
-    adjacency.get(edge.to)?.push({ nodeName: edge.from, weight: edge.weight });
-  }
-
-  return adjacency;
-}
-
-function isAccessibleEdge(edge: Edge, accessibleOnly: boolean): boolean {
-  return !accessibleOnly || (edge.tags?.includes(ACCESSIBLE_TAG) ?? false);
-}
-
-function buildAccessibleAdjacencyMap(nodes: Node[], edges: Edge[], accessibleOnly: boolean): Map<string, Neighbor[]> {
-  return buildAdjacencyMap(nodes, edges.filter((edge) => isAccessibleEdge(edge, accessibleOnly)));
-}
 
 export function dijkstraShortestPath(
   nodes: Node[],
@@ -177,7 +150,8 @@ export function dijkstraShortestPathWithWaypoints(
   end: string,
   avoidNodes: string[] = [],
   softAvoidance?: SoftAvoidanceConfig,
-  accessibleOnly = false
+  accessibleOnly = false,
+  search: SearchFunction = dijkstraShortestPath
 ): RoutingResult {
   const allPoints = [start, ...waypoints, end];
   const segments: RoutingResult[] = [];
@@ -188,7 +162,7 @@ export function dijkstraShortestPathWithWaypoints(
     const segmentStart = allPoints[index];
     const segmentEnd = allPoints[index + 1];
 
-    const segmentResult = dijkstraShortestPath(nodes, edges, segmentStart, segmentEnd, avoidNodes, softAvoidance, accessibleOnly);
+    const segmentResult = search(nodes, edges, segmentStart, segmentEnd, avoidNodes, softAvoidance, accessibleOnly);
 
     if (segmentResult.error) {
       return {
@@ -249,7 +223,7 @@ export function dijkstraTrace(
 ): DijkstraTraceResult {
   const nodeIds = getNodeIds(nodes);
   const avoidSet = new Set(avoidNodes);
-  const adjacency = buildAdjacencyMap(nodes, edges);
+  const adjacency = buildAccessibleAdjacencyMap(nodes, edges, false);
 
   if (!nodeIds.has(start)) {
     return {
