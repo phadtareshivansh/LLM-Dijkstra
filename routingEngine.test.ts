@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dijkstraShortestPath } from './routingEngine';
+import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints } from './routingEngine';
 import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
 
 const shortestRoute = (start: string, end: string, avoidNodes: string[] = []) =>
@@ -62,5 +62,137 @@ describe('dijkstraShortestPath', () => {
 
     expect(forward.distance).toBe(backward.distance);
     expect(forward.distance).toBe(8);
+  });
+});
+
+describe('dijkstraShortestPath soft avoidance', () => {
+  it('keeps the shortest route when the penalty is small', () => {
+    const result = dijkstraShortestPath(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      'Library',
+      ['Hostel_A'],
+      { penalty: 0.1 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(8.2);
+    expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
+  });
+
+  it('switches to the alternative route when the penalty outweighs the detour', () => {
+    const result = dijkstraShortestPath(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      'Library',
+      ['Hostel_A'],
+      { penalty: 100 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+  });
+
+  it('never blocks the route entirely when every path touches a soft-avoided node', () => {
+    const result = dijkstraShortestPath(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      'Library',
+      ['Auditorium', 'Science_Lab'],
+      { penalty: 100 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.path).toContain('Auditorium');
+  });
+});
+
+describe('dijkstraShortestPathWithWaypoints', () => {
+  it('chains segments through a waypoint', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      ['Cafeteria'],
+      'Library'
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+    expect(result.segments).toEqual([
+      { path: ['Main_Gate', 'Science_Lab', 'Cafeteria'], distance: 7 },
+      { path: ['Cafeteria', 'Library'], distance: 2 },
+    ]);
+  });
+
+  it('visits multiple waypoints in order', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Library',
+      ['Cafeteria', 'Main_Gate'],
+      'Hostel_A'
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.path).toEqual([
+      'Library',
+      'Cafeteria',
+      'Science_Lab',
+      'Main_Gate',
+      'Auditorium',
+      'Hostel_A',
+    ]);
+    expect(result.segments).toHaveLength(3);
+  });
+
+  it('passes soft avoidance through to every segment', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      ['Cafeteria'],
+      'Library',
+      ['Hostel_A'],
+      { penalty: 100 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(9);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+  });
+
+  it('returns an error when a waypoint is unknown', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      ['Not_A_Place'],
+      'Library'
+    );
+
+    expect(result.error).toContain('Not_A_Place');
+    expect(result.path).toEqual([]);
+  });
+
+  it('handles an empty waypoint list as a plain shortest path', () => {
+    const result = dijkstraShortestPathWithWaypoints(
+      CAMPUS_NODES,
+      CAMPUS_EDGES,
+      'Main_Gate',
+      [],
+      'Library'
+    );
+
+    expect(result.distance).toBe(8);
+    expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
+    expect(result.segments).toEqual([
+      { path: ['Main_Gate', 'Auditorium', 'Hostel_A', 'Library'], distance: 8 },
+    ]);
   });
 });
