@@ -16,8 +16,13 @@ describe('preferences', () => {
   });
 
   it('round-trips saved preferences', () => {
-    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true });
-    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true });
+    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar' });
+    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar' });
+  });
+
+  it('falls back to dijkstra for an unknown algorithm value', () => {
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ algorithm: 'bidirectional' }));
+    expect(loadPreferences().algorithm).toBe('dijkstra');
   });
 
   it('falls back to defaults for invalid or partial values', () => {
