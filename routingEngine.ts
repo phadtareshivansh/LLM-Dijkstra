@@ -60,10 +60,8 @@ export function dijkstraShortestPath(
   softAvoidance?: SoftAvoidanceConfig
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
-  const avoidSet = new Set(avoidNodes);
-  const softAvoidSet = softAvoidance
-    ? new Set(avoidNodes)
-    : new Set<string>();
+  const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
+  const avoidSet = softAvoidance ? new Set<string>() : new Set(avoidNodes);
   const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
   const adjacency = buildAdjacencyMap(nodes, edges);
 
@@ -83,7 +81,7 @@ export function dijkstraShortestPath(
     };
   }
 
-  if (avoidSet.has(start) || avoidSet.has(end)) {
+  if (avoidSet.has(start) || avoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
