@@ -16,8 +16,8 @@ describe('preferences', () => {
   });
 
   it('round-trips saved preferences', () => {
-    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar' });
-    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar' });
+    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night' });
+    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night' });
   });
 
   it('round-trips the bidirectional algorithm preference', () => {
@@ -28,6 +28,11 @@ describe('preferences', () => {
   it('falls back to dijkstra for an unknown algorithm value', () => {
     window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ algorithm: 'breadth-first' }));
     expect(loadPreferences().algorithm).toBe('dijkstra');
+  });
+
+  it('falls back to off-peak for an unknown time-of-day value', () => {
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ timeOfDay: 'midnight' }));
+    expect(loadPreferences().timeOfDay).toBe('off-peak');
   });
 
   it('falls back to defaults for invalid or partial values', () => {
