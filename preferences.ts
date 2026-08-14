@@ -1,4 +1,5 @@
 import { Algorithm } from './routingEngine';
+import { TimeOfDay } from './timeOfDay';
 
 export const PREFERENCES_STORAGE_KEY = 'dijkstra-navigator-preferences';
 
@@ -9,6 +10,7 @@ export const DEFAULT_PREFERENCES = {
   softAvoidance: false,
   accessibleOnly: false,
   algorithm: 'dijkstra',
+  timeOfDay: 'off-peak',
 } as const;
 
 export type ViewModePreference = 'path' | 'dijkstra';
@@ -20,6 +22,7 @@ export interface Preferences {
   softAvoidance: boolean;
   accessibleOnly: boolean;
   algorithm: Algorithm;
+  timeOfDay: TimeOfDay;
 }
 
 export function loadPreferences(): Preferences {
@@ -50,6 +53,8 @@ export function loadPreferences(): Preferences {
         typeof parsed.accessibleOnly === 'boolean' ? parsed.accessibleOnly : DEFAULT_PREFERENCES.accessibleOnly,
       algorithm:
         parsed.algorithm === 'astar' || parsed.algorithm === 'bidirectional' ? parsed.algorithm : 'dijkstra',
+      timeOfDay:
+        parsed.timeOfDay === 'peak' || parsed.timeOfDay === 'night' ? parsed.timeOfDay : 'off-peak',
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
