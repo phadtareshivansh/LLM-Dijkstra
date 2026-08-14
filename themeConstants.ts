@@ -23,6 +23,8 @@ export interface Edge {
 }
 
 export const ACCESSIBLE_TAG = 'accessible';
+export const NIGHT_CLOSED_TAG = 'night-closed';
+export const STAIRS_TAG = 'stairs';
 
 export const CAMPUS_NODES: Node[] = [
   { name: 'Library', x: 15, y: 30, elevation: 22 },
@@ -34,7 +36,7 @@ export const CAMPUS_NODES: Node[] = [
 ];
 
 export const CAMPUS_EDGES: Edge[] = [
-  { from: 'Library', to: 'Cafeteria', weight: 2, tags: ['standard-route', 'accessible'] },
+  { from: 'Library', to: 'Cafeteria', weight: 2, tags: ['standard-route', 'accessible', 'night-closed'] },
   { from: 'Cafeteria', to: 'Science_Lab', weight: 3, tags: ['standard-route', 'accessible'] },
   { from: 'Science_Lab', to: 'Main_Gate', weight: 4, tags: ['standard-route', 'accessible'] },
   { from: 'Library', to: 'Hostel_A', weight: 5, tags: ['standard-route', 'accessible'] },
