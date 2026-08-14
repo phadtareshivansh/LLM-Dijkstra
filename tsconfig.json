@@ -16,5 +16,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["*.ts", "*.tsx"]
+  "include": ["src", "vitest.setup.ts", "vite-env.d.ts"]
 }
