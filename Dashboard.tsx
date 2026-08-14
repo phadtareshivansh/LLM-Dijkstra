@@ -15,6 +15,7 @@ import { loadPreferences, savePreferences } from './preferences';
 import { downloadGpx } from './gpxUtils';
 import { buildElevationProfile, elevationStats } from './elevationUtils';
 import { distanceBetweenPoints, pinchZoomTarget, vibrateRouteComplete, vibrateRouteStart } from './mobile';
+import { TimeOfDay, applyTimeOfDayEdges } from './timeOfDay';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -610,6 +611,8 @@ interface MapViewProps {
   softAvoidance: boolean;
   accessibleOnly: boolean;
   algorithm: Algorithm;
+  timeOfDay: TimeOfDay;
+  algorithmStats: { algorithm: Algorithm; expandedNodes: number }[] | null;
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
   traceState: TraceStepSceneState | null;
@@ -619,6 +622,7 @@ interface MapViewProps {
   onToggleSoftAvoidance: () => void;
   onToggleAccessibleOnly: () => void;
   onAlgorithmChange: (algorithm: Algorithm) => void;
+  onTimeOfDayChange: (timeOfDay: TimeOfDay) => void;
   onSpeedChange: (ms: number) => void;
   onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
@@ -673,6 +677,8 @@ function MapView({
   softAvoidance,
   accessibleOnly,
   algorithm,
+  timeOfDay,
+  algorithmStats,
   routeCandidates,
   selectedRouteIndex,
   traceState,
@@ -682,6 +688,7 @@ function MapView({
   onToggleSoftAvoidance,
   onToggleAccessibleOnly,
   onAlgorithmChange,
+  onTimeOfDayChange,
   onSpeedChange,
   onNodeClick,
   onOriginChange,
@@ -768,6 +775,8 @@ function MapView({
           softAvoidance={softAvoidance}
           accessibleOnly={accessibleOnly}
           algorithm={algorithm}
+          timeOfDay={timeOfDay}
+          algorithmStats={algorithmStats}
           stepLog={stepLog}
           routeCandidates={routeCandidates}
           selectedRouteIndex={selectedRouteIndex}
@@ -776,6 +785,7 @@ function MapView({
           onToggleSoftAvoidance={onToggleSoftAvoidance}
           onToggleAccessibleOnly={onToggleAccessibleOnly}
           onAlgorithmChange={onAlgorithmChange}
+          onTimeOfDayChange={onTimeOfDayChange}
           onSpeedChange={onSpeedChange}
           onOriginChange={onOriginChange}
           onDestinationChange={onDestinationChange}
@@ -857,6 +867,8 @@ interface ControlPanelProps {
   softAvoidance: boolean;
   accessibleOnly: boolean;
   algorithm: Algorithm;
+  timeOfDay: TimeOfDay;
+  algorithmStats: { algorithm: Algorithm; expandedNodes: number }[] | null;
   stepLog: TraceLogEntry[];
   routeCandidates: AlternativeRoute[];
   selectedRouteIndex: number;
@@ -865,6 +877,7 @@ interface ControlPanelProps {
   onToggleSoftAvoidance: () => void;
   onToggleAccessibleOnly: () => void;
   onAlgorithmChange: (algorithm: Algorithm) => void;
+  onTimeOfDayChange: (timeOfDay: TimeOfDay) => void;
   onSpeedChange: (ms: number) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
@@ -893,12 +906,15 @@ function ControlPanel({
   softAvoidance,
   accessibleOnly,
   algorithm,
+  timeOfDay,
+  algorithmStats,
   stepLog,
   onViewModeChange,
   onToggleEdgeWeights,
   onToggleSoftAvoidance,
   onToggleAccessibleOnly,
   onAlgorithmChange,
+  onTimeOfDayChange,
   onSpeedChange,
   onOriginChange,
   onDestinationChange,
@@ -1038,6 +1054,49 @@ function ControlPanel({
             <p className="mt-1.5 text-xs text-white/45">
               A* guides the search with distance estimates; bidirectional Dijkstra expands from both ends. Trace mode
               always shows classic Dijkstra.
+            </p>
+            {algorithmStats && (
+              <div className="mt-2 rounded-md border border-white/10 bg-black/22 px-3 py-2.5">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
+                  Nodes expanded
+                </span>
+                <div className="mt-1.5 flex flex-col gap-1">
+                  {algorithmStats.map((stat) => (
+                    <div
+                      key={stat.algorithm}
+                      className={`flex items-center justify-between text-xs ${
+                        stat.algorithm === algorithm ? 'text-[#54F6BA]' : 'text-white/60'
+                      }`}
+                    >
+                      <span>{stat.algorithm === 'dijkstra' ? 'Dijkstra' : stat.algorithm === 'astar' ? 'A*' : 'Bi-Dijkstra'}</span>
+                      <span className="font-mono">{stat.expandedNodes}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-3">
+            <span className="mb-2 block text-sm font-semibold text-white">Time of day</span>
+            <div className="grid grid-cols-3 gap-2">
+              {(['off-peak', 'peak', 'night'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => onTimeOfDayChange(option)}
+                  aria-pressed={timeOfDay === option}
+                  className={`h-9 rounded-md border text-sm font-semibold transition-colors ${
+                    timeOfDay === option
+                      ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                      : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+                  }`}
+                >
+                  {option === 'off-peak' ? 'Off-peak' : option === 'peak' ? 'Peak' : 'Night'}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-white/45">
+              Peak hours weight narrow routes; at night, closed venues drop out of the graph.
             </p>
           </div>
           <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
@@ -1413,8 +1472,10 @@ export function Dashboard() {
 
     return loaded;
   });
-  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly, algorithm } = preferences;
+  const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly, algorithm, timeOfDay } = preferences;
   const shareResetTimeoutRef = useRef<number | null>(null);
+
+  const effectiveEdges = useMemo(() => applyTimeOfDayEdges(CAMPUS_EDGES, timeOfDay), [timeOfDay]);
 
   const routeCandidates = useMemo(() => {
     const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
@@ -1424,7 +1485,7 @@ export function Dashboard() {
     if (waypoints.length > 0) {
       const result = dijkstraShortestPathWithWaypoints(
         CAMPUS_NODES,
-        CAMPUS_EDGES,
+        effectiveEdges,
         currentOrigin,
         waypoints,
         currentDestination,
@@ -1437,8 +1498,26 @@ export function Dashboard() {
       return result.error ? [] : [{ path: result.path, distance: result.distance }];
     }
 
-    return kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly, search);
-  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance, accessibleOnly, algorithm]);
+    return kShortestPaths(CAMPUS_NODES, effectiveEdges, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly, search);
+  }, [currentOrigin, currentDestination, avoidNodes, waypoints, softAvoidance, accessibleOnly, algorithm, effectiveEdges]);
+
+  const algorithmStats = useMemo(() => {
+    if (waypoints.length > 0) {
+      return null;
+    }
+
+    const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
+    const searches: [Algorithm, SearchFunction][] = [
+      ['dijkstra', dijkstraShortestPath],
+      ['astar', astarShortestPath],
+      ['bidirectional', bidirectionalShortestPath],
+    ];
+
+    return searches.map(([name, search]) => ({
+      algorithm: name,
+      expandedNodes: search(CAMPUS_NODES, effectiveEdges, currentOrigin, currentDestination, avoidNodes, softAvoidanceConfig, accessibleOnly).stats?.expandedNodes ?? 0,
+    }));
+  }, [currentOrigin, currentDestination, avoidNodes, softAvoidance, accessibleOnly, effectiveEdges, waypoints.length]);
 
   useEffect(() => {
     setSelectedRouteIndex(0);
@@ -1487,8 +1566,8 @@ export function Dashboard() {
   const canAnimate = calculatedRoutePath.length > 1 && !routeError;
 
   const traceResult = useMemo(() => {
-    return dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, currentOrigin, currentDestination, avoidNodes);
-  }, [currentOrigin, currentDestination, avoidNodes]);
+    return dijkstraTrace(CAMPUS_NODES, effectiveEdges, currentOrigin, currentDestination, avoidNodes);
+  }, [currentOrigin, currentDestination, avoidNodes, effectiveEdges]);
 
   const traceTotalSteps = Math.max(traceResult.steps.length, 1);
   const traceCurrentIndex = Math.min(timelineStep - 1, Math.max(traceResult.steps.length - 1, 0));
@@ -1945,6 +2024,8 @@ export function Dashboard() {
     softAvoidance,
     accessibleOnly,
     algorithm,
+    timeOfDay,
+    algorithmStats,
     routeCandidates,
     selectedRouteIndex: safeRouteIndex,
     aiPrompt,
@@ -1965,6 +2046,8 @@ export function Dashboard() {
       setPreferences((current) => ({ ...current, accessibleOnly: !current.accessibleOnly })),
     onAlgorithmChange: (nextAlgorithm) =>
       setPreferences((current) => ({ ...current, algorithm: nextAlgorithm })),
+    onTimeOfDayChange: (nextTimeOfDay) =>
+      setPreferences((current) => ({ ...current, timeOfDay: nextTimeOfDay })),
     onSpeedChange: handleSpeedChange,
     onNodeClick: handleNodeToggleAvoid,
     onOriginChange: handleOriginChange,
