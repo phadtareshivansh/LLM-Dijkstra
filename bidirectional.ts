@@ -177,6 +177,7 @@ export function bidirectionalShortestPath(
   let expandForward = true;
   let forwardExhausted = false;
   let backwardExhausted = false;
+  let expandedNodes = 0;
 
   while (
     forward.unvisited.size > 0 &&
@@ -202,6 +203,7 @@ export function bidirectionalShortestPath(
 
     const frontier = expandForward ? forward : backward;
     const opposite = expandForward ? backward : forward;
+    expandedNodes += 1;
 
     relaxEdges(frontier, adjacency, current.nodeName, current.distance, avoidSet, softAvoidSet, penalty);
     expandForward = !expandForward;
@@ -223,11 +225,13 @@ export function bidirectionalShortestPath(
       path: [],
       distance: Number.POSITIVE_INFINITY,
       error: UNREACHABLE_ERROR,
+      stats: { expandedNodes },
     };
   }
 
   return {
     path: reconstructMeetingPath(forward, backward, bestMeetingNode, start, end),
     distance: bestDistance,
+    stats: { expandedNodes },
   };
 }
