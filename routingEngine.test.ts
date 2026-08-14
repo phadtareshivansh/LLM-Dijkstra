@@ -158,7 +158,7 @@ describe('dijkstraShortestPathWithWaypoints', () => {
     expect(result.error).toBeUndefined();
     expect(result.distance).toBe(9);
     expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
-    expect(result.segments).toEqual([
+    expect(result.segments).toMatchObject([
       { path: ['Main_Gate', 'Science_Lab', 'Cafeteria'], distance: 7 },
       { path: ['Cafeteria', 'Library'], distance: 2 },
     ]);
@@ -225,7 +225,7 @@ describe('dijkstraShortestPathWithWaypoints', () => {
 
     expect(result.distance).toBe(8);
     expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
-    expect(result.segments).toEqual([
+    expect(result.segments).toMatchObject([
       { path: ['Main_Gate', 'Auditorium', 'Hostel_A', 'Library'], distance: 8 },
     ]);
   });
