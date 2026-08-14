@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import Dashboard from './Dashboard';
 
@@ -124,5 +124,32 @@ describe('Dashboard', () => {
 
     expect(screen.getByRole('button', { name: 'Bi-Dijkstra' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'A*' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('switches to peak-time weights and reroutes the trip', async () => {
+    render(<Dashboard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Peak' }));
+
+    expect(await screen.findAllByText(/14\.4 units/)).not.toHaveLength(0);
+  });
+
+  it('closes the cafeteria route at night', async () => {
+    render(<Dashboard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Night' }));
+
+    expect(await screen.findByText(/8 units/)).toBeTruthy();
+  });
+
+  it('reports expansion counts for every algorithm', () => {
+    render(<Dashboard />);
+
+    const panel = screen.getByText('Nodes expanded').parentElement;
+
+    expect(panel).not.toBeNull();
+    expect(within(panel as HTMLElement).getByText('Dijkstra')).toBeTruthy();
+    expect(within(panel as HTMLElement).getByText('A*')).toBeTruthy();
+    expect(within(panel as HTMLElement).getByText('Bi-Dijkstra')).toBeTruthy();
   });
 });
