@@ -18,7 +18,7 @@ export interface SoftAvoidanceConfig {
   penalty: number;
 }
 
-export type Algorithm = 'dijkstra' | 'astar';
+export type Algorithm = 'dijkstra' | 'astar' | 'bidirectional';
 
 export type SearchFunction = (
   nodes: Node[],
