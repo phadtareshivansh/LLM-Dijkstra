@@ -5,11 +5,16 @@ import {
   reconstructPath,
 } from './graphUtils';
 
+export interface SearchStats {
+  expandedNodes: number;
+}
+
 export interface RoutingResult {
   path: string[];
   distance: number;
   error?: string;
   segments?: RoutingResult[];
+  stats?: SearchStats;
 }
 
 export const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
@@ -85,6 +90,8 @@ export function dijkstraShortestPath(
 
   distanceByNode.set(start, 0);
 
+  let expandedNodes = 0;
+
   while (unvisited.size > 0) {
     let currentNode: string | undefined;
     let currentDistance = Number.POSITIVE_INFINITY;
@@ -102,12 +109,14 @@ export function dijkstraShortestPath(
     }
 
     unvisited.delete(currentNode);
+    expandedNodes += 1;
 
     if (currentNode === end) {
       const path = reconstructPath(previousByNode, end);
       return {
         path,
         distance: currentDistance,
+        stats: { expandedNodes },
       };
     }
 
@@ -139,6 +148,7 @@ export function dijkstraShortestPath(
     path: [],
     distance: Number.POSITIVE_INFINITY,
     error: UNREACHABLE_ERROR,
+    stats: { expandedNodes },
   };
 }
 
