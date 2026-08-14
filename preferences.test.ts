@@ -20,8 +20,13 @@ describe('preferences', () => {
     expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar' });
   });
 
+  it('round-trips the bidirectional algorithm preference', () => {
+    savePreferences({ ...DEFAULT_PREFERENCES, algorithm: 'bidirectional' });
+    expect(loadPreferences().algorithm).toBe('bidirectional');
+  });
+
   it('falls back to dijkstra for an unknown algorithm value', () => {
-    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ algorithm: 'bidirectional' }));
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ algorithm: 'breadth-first' }));
     expect(loadPreferences().algorithm).toBe('dijkstra');
   });
 
