@@ -48,7 +48,8 @@ export function loadPreferences(): Preferences {
         typeof parsed.softAvoidance === 'boolean' ? parsed.softAvoidance : DEFAULT_PREFERENCES.softAvoidance,
       accessibleOnly:
         typeof parsed.accessibleOnly === 'boolean' ? parsed.accessibleOnly : DEFAULT_PREFERENCES.accessibleOnly,
-      algorithm: parsed.algorithm === 'astar' ? 'astar' : 'dijkstra',
+      algorithm:
+        parsed.algorithm === 'astar' || parsed.algorithm === 'bidirectional' ? parsed.algorithm : 'dijkstra',
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
