@@ -1,4 +1,4 @@
-import { Edge, NIGHT_CLOSED_TAG, STAIRS_TAG } from './themeConstants';
+import { Edge, NIGHT_CLOSED_TAG, STAIRS_TAG } from '../data/themeConstants';
 
 export type TimeOfDay = 'off-peak' | 'peak' | 'night';
 

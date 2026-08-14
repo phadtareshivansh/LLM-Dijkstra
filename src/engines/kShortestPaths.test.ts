@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
 import { kShortestPaths, pathDistance } from './kShortestPaths';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 describe('kShortestPaths', () => {
   it('finds the two shortest routes between Main Gate and Library', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyTimeOfDayEdges } from './timeOfDay';
-import { CAMPUS_EDGES, CAMPUS_NODES, STAIRS_TAG } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES, STAIRS_TAG } from '../data/themeConstants';
 import { dijkstraShortestPath } from './routingEngine';
 
 const routeDistance = (timeOfDay: Parameters<typeof applyTimeOfDayEdges>[1]) => {

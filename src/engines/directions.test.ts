@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDirections, formatDirectionText } from './directions';
-import { CAMPUS_EDGES } from './themeConstants';
+import { CAMPUS_EDGES } from '../data/themeConstants';
 
 const primaryRoute = ['Main_Gate', 'Auditorium', 'Hostel_A', 'Library'];
 const alternativeRoute = ['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library'];

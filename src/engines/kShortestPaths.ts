@@ -1,4 +1,4 @@
-import { Edge, Node } from './themeConstants';
+import { Edge, Node } from '../data/themeConstants';
 import { dijkstraShortestPath, SearchFunction, SoftAvoidanceConfig } from './routingEngine';
 import { pathDistance } from './graphUtils';
 

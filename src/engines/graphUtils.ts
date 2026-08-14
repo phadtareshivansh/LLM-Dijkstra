@@ -1,4 +1,4 @@
-import { ACCESSIBLE_TAG, Edge, Node } from './themeConstants';
+import { ACCESSIBLE_TAG, Edge, Node } from '../data/themeConstants';
 
 export interface Neighbor {
   nodeName: string;

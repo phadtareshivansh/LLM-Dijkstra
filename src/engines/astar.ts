@@ -1,4 +1,4 @@
-import { Edge, Node, ACCESSIBLE_TAG } from './themeConstants';
+import { Edge, Node, ACCESSIBLE_TAG } from '../data/themeConstants';
 import { buildAccessibleAdjacencyMap, euclideanDistance, getNodeIds, reconstructPath } from './graphUtils';
 import { RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
 

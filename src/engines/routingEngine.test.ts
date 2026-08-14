@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
 import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints } from './routingEngine';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 const shortestRoute = (start: string, end: string, avoidNodes: string[] = []) =>
   dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, start, end, avoidNodes);

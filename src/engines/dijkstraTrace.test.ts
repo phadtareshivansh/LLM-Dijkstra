@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 import { UNREACHABLE_ERROR, dijkstraTrace } from './routingEngine';
 
 describe('dijkstraTrace', () => {

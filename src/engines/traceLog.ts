@@ -1,5 +1,5 @@
 import { DijkstraTraceStep } from './routingEngine';
-import { formatNodeLabel } from './nodeLabels';
+import { formatNodeLabel } from '../data/nodeLabels';
 
 export interface TraceLogEntry {
   step: number;

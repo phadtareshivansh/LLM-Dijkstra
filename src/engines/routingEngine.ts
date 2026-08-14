@@ -1,4 +1,4 @@
-import { Edge, Node } from './themeConstants';
+import { Edge, Node } from '../data/themeConstants';
 import {
   buildAccessibleAdjacencyMap,
   getNodeIds,

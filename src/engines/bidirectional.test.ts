@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bidirectionalShortestPath } from './bidirectional';
 import { dijkstraShortestPath } from './routingEngine';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 const bidirectionalRoute = (start: string, end: string, avoidNodes: string[] = []) =>
   bidirectionalShortestPath(CAMPUS_NODES, CAMPUS_EDGES, start, end, avoidNodes);

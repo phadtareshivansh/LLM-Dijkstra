@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
 import { bidirectionalShortestPath } from './bidirectional';
 import { dijkstraShortestPath } from './routingEngine';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 describe('search expansion stats', () => {
   it('counts Dijkstra settlements for Main Gate to Library', () => {

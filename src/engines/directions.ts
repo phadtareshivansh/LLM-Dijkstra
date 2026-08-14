@@ -1,6 +1,6 @@
-import { Edge } from './themeConstants';
+import { Edge } from '../data/themeConstants';
 import { buildEdgeWeightMap } from './graphUtils';
-import { getDisplayLabel } from './nodeLabels';
+import { getDisplayLabel } from '../data/nodeLabels';
 
 export interface NavigationLeg {
   index: number;

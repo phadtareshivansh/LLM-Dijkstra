@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
 import { dijkstraShortestPath } from './routingEngine';
-import { CAMPUS_EDGES, CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 const astarRoute = (start: string, end: string, avoidNodes: string[] = []) =>
   astarShortestPath(CAMPUS_NODES, CAMPUS_EDGES, start, end, avoidNodes);
