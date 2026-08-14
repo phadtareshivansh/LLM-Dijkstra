@@ -4,6 +4,7 @@ const RouteScene3D = lazy(() => import('./RouteScene3D'));
 import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
 import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints, dijkstraTrace, Algorithm, RoutingResult, SearchFunction, UNREACHABLE_ERROR } from './routingEngine';
 import { astarShortestPath } from './astar';
+import { bidirectionalShortestPath } from './bidirectional';
 import { kShortestPaths, AlternativeRoute } from './kShortestPaths';
 import { buildDirections } from './directions';
 import { buildShareUrl } from './shareUtils';
@@ -13,6 +14,7 @@ import { formatNodeLabel as getNodeLabel } from './nodeLabels';
 import { loadPreferences, savePreferences } from './preferences';
 import { downloadGpx } from './gpxUtils';
 import { buildElevationProfile, elevationStats } from './elevationUtils';
+import { distanceBetweenPoints, pinchZoomTarget, vibrateRouteComplete, vibrateRouteStart } from './mobile';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -247,7 +249,7 @@ function RouteTimeline({
   const hasDistance = Number.isFinite(distance) && distance >= 0;
 
   return (
-    <section className="pointer-events-auto absolute bottom-4 left-3 right-3 z-40 rounded-lg border border-white/14 bg-[#071116]/88 px-5 py-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:left-4 sm:right-4 sm:px-10 sm:py-6">
+    <section className="pointer-events-auto absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 rounded-lg border border-white/14 bg-[#071116]/88 px-5 py-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:left-4 sm:right-4 sm:px-10 sm:py-6">
       <div className="relative flex flex-col gap-5 lg:min-h-[138px] lg:flex-row lg:items-center lg:justify-between lg:gap-8">
         <button
           type="button"
@@ -444,7 +446,7 @@ function MapControls({
   const isAtMaxZoom = zoomLevel >= MAX_MAP_ZOOM;
 
   return (
-    <div className="pointer-events-auto absolute right-5 top-14 z-40 hidden flex-col items-center gap-4 md:flex">
+    <div className="pointer-events-auto absolute right-5 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 hidden flex-col items-center gap-4 md:flex">
       <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-[#071116]/72 text-white shadow-xl shadow-black/35 backdrop-blur-xl">
         <div className="relative text-center text-xs font-semibold tracking-[0.18em]">
           <span className="absolute -top-4 left-1/2 -translate-x-1/2">N</span>
@@ -639,6 +641,9 @@ interface MapViewProps {
   onZoomOut: () => void;
   onToggleThreeD: () => void;
   onResetView: () => void;
+  onTouchStart: (event: React.TouchEvent<HTMLElement>) => void;
+  onTouchMove: (event: React.TouchEvent<HTMLElement>) => void;
+  onTouchEnd: () => void;
 }
 
 function MapView({
@@ -699,6 +704,9 @@ function MapView({
   onZoomOut,
   onToggleThreeD,
   onResetView,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: MapViewProps) {
   const traceEndpointPair = useMemo(
     () => (viewMode === 'dijkstra' ? [origin, destination] : undefined),
@@ -706,7 +714,12 @@ function MapView({
   );
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
+    <main
+      className="relative min-h-screen overflow-hidden bg-[#02080B] text-white [touch-action:none]"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       <Suspense
         fallback={
           <div className="flex min-h-screen items-center justify-center bg-[#02080B]">
@@ -903,7 +916,7 @@ function ControlPanel({
   const directions = useMemo(() => buildDirections(routePath, CAMPUS_EDGES), [routePath]);
 
   return (
-    <section className="pointer-events-auto absolute left-3 top-7 z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
+    <section className="pointer-events-auto absolute left-3 top-[calc(1.75rem+env(safe-area-inset-top))] z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
       <button
         type="button"
         onClick={onMinimize}
@@ -981,7 +994,7 @@ function ControlPanel({
           </div>
           <div className="mt-3">
             <span className="mb-2 block text-sm font-semibold text-white">Search algorithm</span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => onAlgorithmChange('dijkstra')}
@@ -1008,9 +1021,23 @@ function ControlPanel({
               >
                 A*
               </button>
+              <button
+                type="button"
+                onClick={() => onAlgorithmChange('bidirectional')}
+                disabled={viewMode === 'dijkstra'}
+                aria-pressed={algorithm === 'bidirectional'}
+                className={`flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  algorithm === 'bidirectional'
+                    ? 'border-emerald-300/55 bg-[#0B1914] text-[#54F6BA]'
+                    : 'border-white/14 bg-black/18 text-white/70 hover:border-emerald-300/40'
+                }`}
+              >
+                Bi-Dijkstra
+              </button>
             </div>
             <p className="mt-1.5 text-xs text-white/45">
-              A* guides the search with distance estimates; trace mode always shows classic Dijkstra.
+              A* guides the search with distance estimates; bidirectional Dijkstra expands from both ends. Trace mode
+              always shows classic Dijkstra.
             </p>
           </div>
           <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md border border-white/12 bg-black/18 px-4 py-3 text-sm text-white/84 transition-colors hover:border-emerald-300/40">
@@ -1331,7 +1358,7 @@ function MinimizedPanelButton({ origin, destination, onExpand }: MinimizedPanelB
     <button
       type="button"
       onClick={onExpand}
-      className="pointer-events-auto absolute left-4 top-6 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg border border-white/16 bg-[#071116]/84 px-4 py-3 text-left shadow-2xl shadow-black/45 backdrop-blur-xl transition-colors hover:border-emerald-300/40 md:left-6"
+      className="pointer-events-auto absolute left-4 top-[calc(1.5rem+env(safe-area-inset-top))] z-40 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg border border-white/16 bg-[#071116]/84 px-4 py-3 text-left shadow-2xl shadow-black/45 backdrop-blur-xl transition-colors hover:border-emerald-300/40 md:left-6"
       aria-label="Open dashboard"
     >
       <NetworkLogo className="h-9 w-9" />
@@ -1391,7 +1418,8 @@ export function Dashboard() {
 
   const routeCandidates = useMemo(() => {
     const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
-    const search: SearchFunction = algorithm === 'astar' ? astarShortestPath : dijkstraShortestPath;
+    const search: SearchFunction =
+      algorithm === 'astar' ? astarShortestPath : algorithm === 'bidirectional' ? bidirectionalShortestPath : dijkstraShortestPath;
 
     if (waypoints.length > 0) {
       const result = dijkstraShortestPathWithWaypoints(
@@ -1571,6 +1599,7 @@ export function Dashboard() {
 
     if (timelineStep >= effectiveTotalSteps) {
       setIsAnimationRunning(false);
+      vibrateRouteComplete();
       return undefined;
     }
 
@@ -1808,6 +1837,7 @@ export function Dashboard() {
 
     setTimelineStep(1);
     setIsAnimationRunning(true);
+    vibrateRouteStart();
   }
 
   function handleSkipAnimation() {
@@ -1843,6 +1873,38 @@ export function Dashboard() {
 
   function handleZoomOut() {
     setMapZoomLevel((zoomLevel) => clampMapZoom(zoomLevel - MAP_ZOOM_STEP));
+  }
+
+  const pinchGestureRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+
+  function handleTouchStart(event: React.TouchEvent<HTMLElement>) {
+    if (event.touches.length !== 2) {
+      return;
+    }
+
+    const [first, second] = Array.from(event.touches);
+
+    pinchGestureRef.current = {
+      startDistance: distanceBetweenPoints(first.clientX, first.clientY, second.clientX, second.clientY),
+      startZoom: mapZoomLevel,
+    };
+  }
+
+  function handleTouchMove(event: React.TouchEvent<HTMLElement>) {
+    const gesture = pinchGestureRef.current;
+
+    if (!gesture || event.touches.length !== 2) {
+      return;
+    }
+
+    const [first, second] = Array.from(event.touches);
+    const currentDistance = distanceBetweenPoints(first.clientX, first.clientY, second.clientX, second.clientY);
+
+    setMapZoomLevel(pinchZoomTarget(gesture.startDistance, currentDistance, gesture.startZoom, MIN_MAP_ZOOM, MAX_MAP_ZOOM));
+  }
+
+  function handleTouchEnd() {
+    pinchGestureRef.current = null;
   }
 
   function handleToggleThreeD() {
@@ -1925,6 +1987,9 @@ export function Dashboard() {
     onZoomOut: handleZoomOut,
     onToggleThreeD: handleToggleThreeD,
     onResetView: handleResetView,
+    onTouchStart: handleTouchStart,
+    onTouchMove: handleTouchMove,
+    onTouchEnd: handleTouchEnd,
   };
 
   return <MapView {...mapViewProps} />;
