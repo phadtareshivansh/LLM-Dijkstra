@@ -1,21 +1,21 @@
 import React, { ChangeEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { TraceStepSceneState } from './RouteScene3D';
 const RouteScene3D = lazy(() => import('./RouteScene3D'));
-import { CAMPUS_EDGES, CAMPUS_NODES, THEME } from './themeConstants';
-import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints, dijkstraTrace, Algorithm, RoutingResult, SearchFunction, UNREACHABLE_ERROR } from './routingEngine';
-import { astarShortestPath } from './astar';
-import { bidirectionalShortestPath } from './bidirectional';
-import { kShortestPaths, AlternativeRoute } from './kShortestPaths';
-import { buildDirections } from './directions';
-import { buildShareUrl } from './shareUtils';
-import { parseNavigationRequest } from './parseNavigationRequest';
-import { TraceLogEntry, describeTraceStep } from './traceLog';
-import { formatNodeLabel as getNodeLabel } from './nodeLabels';
-import { loadPreferences, savePreferences } from './preferences';
-import { downloadGpx } from './gpxUtils';
-import { buildElevationProfile, elevationStats } from './elevationUtils';
-import { distanceBetweenPoints, pinchZoomTarget, vibrateRouteComplete, vibrateRouteStart } from './mobile';
-import { TimeOfDay, applyTimeOfDayEdges } from './timeOfDay';
+import { CAMPUS_EDGES, CAMPUS_NODES, Edge, THEME } from '../data/themeConstants';
+import { DEFAULT_SOFT_PENALTY, dijkstraShortestPath, dijkstraShortestPathWithWaypoints, dijkstraTrace, Algorithm, RoutingResult, SearchFunction, UNREACHABLE_ERROR } from '../engines/routingEngine';
+import { astarShortestPath } from '../engines/astar';
+import { bidirectionalShortestPath } from '../engines/bidirectional';
+import { kShortestPaths, AlternativeRoute } from '../engines/kShortestPaths';
+import { buildDirections } from '../engines/directions';
+import { buildShareUrl } from '../utils/shareUtils';
+import { parseNavigationRequest } from '../utils/parseNavigationRequest';
+import { TraceLogEntry, describeTraceStep } from '../engines/traceLog';
+import { formatNodeLabel as getNodeLabel } from '../data/nodeLabels';
+import { loadPreferences, savePreferences } from '../utils/preferences';
+import { downloadGpx } from '../utils/gpxUtils';
+import { buildElevationProfile, elevationStats } from '../utils/elevationUtils';
+import { distanceBetweenPoints, pinchZoomTarget, vibrateRouteComplete, vibrateRouteStart } from '../utils/mobile';
+import { TimeOfDay, applyTimeOfDayEdges } from '../engines/timeOfDay';
 
 type AiParseState = 'idle' | 'parsing';
 type ViewMode = 'path' | 'dijkstra';
@@ -76,10 +76,12 @@ function getQueryAvoidNodes(): string[] {
 
   const validNames = new Set(CAMPUS_NODES.map((node) => node.name));
 
-  return value
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => validNames.has(name));
+  return [...new Set(
+    value
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => validNames.has(name))
+  )];
 }
 
 function getQueryWaypoints(): string[] {
@@ -95,10 +97,12 @@ function getQueryWaypoints(): string[] {
 
   const validNames = new Set(CAMPUS_NODES.map((node) => node.name));
 
-  return value
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => validNames.has(name));
+  return [...new Set(
+    value
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => validNames.has(name))
+  )];
 }
 
 function getQuerySpeedMs(): number {
@@ -304,7 +308,7 @@ function RouteTimeline({
             </p>
             {hasDistance ? (
               <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/45">
-                {pathLength} stop{pathLength === 1 ? '' : 's'} · {distance} unit{distance === 1 ? '' : 's'}
+                {pathLength} stop{pathLength === 1 ? '' : 's'} · {Math.round(distance * 10) / 10} unit{Math.round(distance * 10) / 10 === 1 ? '' : 's'}
               </p>
             ) : null}
             {avoidNodes.length > 0 ? (
@@ -358,7 +362,7 @@ function RouteTimeline({
           </div>
         </div>
 
-<div className="flex w-full items-stretch justify-center gap-2 sm:w-[330px]">
+        <div className="flex w-full items-stretch justify-center gap-2 sm:w-[330px]">
           <button
             type="button"
             onClick={onStepBack}
@@ -590,6 +594,7 @@ interface MapViewProps {
   avoidNodes: string[];
   routeError: string | null;
   routePath: string[];
+  edges: Edge[];
   sceneStepIndex: number;
   zoomLevel: number;
   isThreeDimensional: boolean;
@@ -656,6 +661,7 @@ function MapView({
   avoidNodes,
   routeError,
   routePath,
+  edges,
   sceneStepIndex,
   zoomLevel,
   isThreeDimensional,
@@ -765,6 +771,7 @@ function MapView({
           destination={destination}
           routeError={routeError}
           routePath={routePath}
+          edges={edges}
           aiPrompt={aiPrompt}
           aiParseState={aiParseState}
           aiFeedback={aiFeedback}
@@ -857,6 +864,7 @@ interface ControlPanelProps {
   destination: string;
   routeError: string | null;
   routePath: string[];
+  edges: Edge[];
   aiPrompt: string;
   aiParseState: AiParseState;
   aiFeedback: AiFeedback | null;
@@ -896,6 +904,7 @@ function ControlPanel({
   destination,
   routeError,
   routePath,
+  edges,
   aiPrompt,
   aiParseState,
   aiFeedback,
@@ -929,7 +938,7 @@ function ControlPanel({
   routeCandidates,
   selectedRouteIndex,
 }: ControlPanelProps) {
-  const directions = useMemo(() => buildDirections(routePath, CAMPUS_EDGES), [routePath]);
+  const directions = useMemo(() => buildDirections(routePath, edges), [routePath, edges]);
 
   return (
     <section className="pointer-events-auto absolute left-3 top-[calc(1.75rem+env(safe-area-inset-top))] z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
@@ -1233,7 +1242,7 @@ function ControlPanel({
                   <span className="font-medium text-white">
                     {getNodeLabel(leg.from)} → {getNodeLabel(leg.to)}
                   </span>{' '}
-                  · {leg.distance} unit{leg.distance === 1 ? '' : 's'} · {leg.cumulativeDistance} total
+                  · {leg.distance} unit{leg.distance === 1 ? '' : 's'} · {Math.round(leg.cumulativeDistance * 10) / 10} total
                 </span>
               </li>
             ))}
@@ -1305,7 +1314,7 @@ function ControlPanel({
                       {idx === 0 ? 'Primary' : `Alt ${idx}`}
                     </td>
                     <td className="py-2 font-mono tabular-nums text-white/90">
-                      {route.distance} units
+                      {Math.round(route.distance * 10) / 10} units
                     </td>
                     <td className="py-2 text-white/70">
                       {route.path.map((node: string, i: number) => (
@@ -1466,19 +1475,51 @@ export function Dashboard() {
   const [preferences, setPreferences] = useState(() => {
     const loaded = loadPreferences();
 
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('speed')) {
-      return { ...loaded, speedMs: getQuerySpeedMs() };
+    if (typeof window === 'undefined') {
+      return loaded;
     }
 
-    return loaded;
+    const params = new URLSearchParams(window.location.search);
+    const next = { ...loaded };
+
+    if (params.get('speed')) {
+      next.speedMs = getQuerySpeedMs();
+    }
+
+    const requestedAlgorithm = params.get('algorithm');
+    if (requestedAlgorithm === 'astar' || requestedAlgorithm === 'bidirectional') {
+      next.algorithm = requestedAlgorithm;
+    }
+
+    if (params.get('softAvoidance') === 'true') {
+      next.softAvoidance = true;
+    }
+
+    if (params.get('accessibleOnly') === 'true') {
+      next.accessibleOnly = true;
+    }
+
+    const requestedTimeOfDay = params.get('timeOfDay');
+    if (requestedTimeOfDay === 'peak' || requestedTimeOfDay === 'night') {
+      next.timeOfDay = requestedTimeOfDay;
+    }
+
+    return next;
   });
   const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly, algorithm, timeOfDay } = preferences;
   const shareResetTimeoutRef = useRef<number | null>(null);
+  const userPausedRef = useRef(false);
+  const aiSubmitInFlightRef = useRef(false);
+  const latestStateRef = useRef({ origin: currentOrigin, destination: currentDestination, avoidNodes });
+
+  useEffect(() => {
+    latestStateRef.current = { origin: currentOrigin, destination: currentDestination, avoidNodes };
+  });
 
   const effectiveEdges = useMemo(() => applyTimeOfDayEdges(CAMPUS_EDGES, timeOfDay), [timeOfDay]);
 
   const routeCandidates = useMemo(() => {
-    const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
+    const softAvoidanceConfig = softAvoidance ? { penalty: DEFAULT_SOFT_PENALTY } : undefined;
     const search: SearchFunction =
       algorithm === 'astar' ? astarShortestPath : algorithm === 'bidirectional' ? bidirectionalShortestPath : dijkstraShortestPath;
 
@@ -1506,7 +1547,7 @@ export function Dashboard() {
       return null;
     }
 
-    const softAvoidanceConfig = softAvoidance ? { penalty: 100 } : undefined;
+    const softAvoidanceConfig = softAvoidance ? { penalty: DEFAULT_SOFT_PENALTY } : undefined;
     const searches: [Algorithm, SearchFunction][] = [
       ['dijkstra', dijkstraShortestPath],
       ['astar', astarShortestPath],
@@ -1544,13 +1585,30 @@ export function Dashboard() {
       url.searchParams.set('waypoints', waypoints.join(','));
     }
 
+    url.searchParams.set('algorithm', algorithm);
+
+    if (softAvoidance) {
+      url.searchParams.set('softAvoidance', 'true');
+    } else {
+      url.searchParams.delete('softAvoidance');
+    }
+
+    if (accessibleOnly) {
+      url.searchParams.set('accessibleOnly', 'true');
+    } else {
+      url.searchParams.delete('accessibleOnly');
+    }
+
+    url.searchParams.set('timeOfDay', timeOfDay);
+    url.searchParams.set('speed', String(routeStepMs));
+
     url.searchParams.delete('panel');
     if (isPanelMinimized) {
       url.searchParams.set('panel', 'minimized');
     }
 
     window.history.replaceState(null, '', url.toString());
-  }, [avoidNodes, currentDestination, currentOrigin, isPanelMinimized, waypoints]);
+  }, [accessibleOnly, algorithm, avoidNodes, currentDestination, currentOrigin, isPanelMinimized, routeStepMs, softAvoidance, timeOfDay, waypoints]);
 
   const safeRouteIndex = Math.min(selectedRouteIndex, Math.max(routeCandidates.length - 1, 0));
   const routeResult: RoutingResult = useMemo(
@@ -1566,8 +1624,17 @@ export function Dashboard() {
   const canAnimate = calculatedRoutePath.length > 1 && !routeError;
 
   const traceResult = useMemo(() => {
-    return dijkstraTrace(CAMPUS_NODES, effectiveEdges, currentOrigin, currentDestination, avoidNodes);
-  }, [currentOrigin, currentDestination, avoidNodes, effectiveEdges]);
+    const softAvoidanceConfig = softAvoidance ? { penalty: DEFAULT_SOFT_PENALTY } : undefined;
+    return dijkstraTrace(
+      CAMPUS_NODES,
+      effectiveEdges,
+      currentOrigin,
+      currentDestination,
+      avoidNodes,
+      softAvoidanceConfig,
+      accessibleOnly
+    );
+  }, [currentOrigin, currentDestination, avoidNodes, effectiveEdges, softAvoidance, accessibleOnly]);
 
   const traceTotalSteps = Math.max(traceResult.steps.length, 1);
   const traceCurrentIndex = Math.min(timelineStep - 1, Math.max(traceResult.steps.length - 1, 0));
@@ -1668,7 +1735,7 @@ export function Dashboard() {
 
   useEffect(() => {
     setTimelineStep(1);
-    setIsAnimationRunning(effectiveCanAnimate);
+    setIsAnimationRunning(userPausedRef.current ? false : effectiveCanAnimate);
   }, [routeSignature, effectiveCanAnimate]);
 
   useEffect(() => {
@@ -1707,7 +1774,8 @@ export function Dashboard() {
         target.isContentEditable ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT'
+        target.tagName === 'SELECT' ||
+        target.tagName === 'BUTTON'
       );
     }
 
@@ -1764,69 +1832,79 @@ export function Dashboard() {
   async function handleAiSubmit() {
     const query = aiPrompt.trim();
 
-    if (!query || aiParseState === 'parsing') {
+    if (!query || aiSubmitInFlightRef.current) {
       return;
     }
 
+    aiSubmitInFlightRef.current = true;
     setAiParseState('parsing');
     setAiFeedback(null);
 
+    const submitState = latestStateRef.current;
+
     const parsed = await parseNavigationRequest(query, {
-      origin: currentOrigin,
-      destination: currentDestination,
-      avoid_nodes: avoidNodes,
+      origin: submitState.origin,
+      destination: submitState.destination,
+      avoid_nodes: submitState.avoidNodes,
     });
 
-    let nextOrigin = parsed.origin ?? currentOrigin;
-    let nextDestination = parsed.destination ?? currentDestination;
+    try {
+      const current = latestStateRef.current;
 
-    if (nextOrigin === nextDestination) {
-      if (parsed.destination && !parsed.origin) {
-        nextOrigin = CAMPUS_NODES.find((node) => node.name !== nextDestination)?.name ?? nextOrigin;
+      let nextOrigin = parsed.origin ?? current.origin;
+      let nextDestination = parsed.destination ?? current.destination;
+
+      if (nextOrigin === nextDestination) {
+        if (parsed.destination && !parsed.origin) {
+          nextOrigin = CAMPUS_NODES.find((node) => node.name !== nextDestination)?.name ?? nextOrigin;
+        } else {
+          nextDestination = CAMPUS_NODES.find((node) => node.name !== nextOrigin)?.name ?? nextDestination;
+        }
+      }
+
+      const changes: string[] = [];
+
+      if (parsed.origin) {
+        changes.push(`start at ${getNodeLabel(nextOrigin)}`);
+      }
+
+      if (parsed.destination) {
+        changes.push(`end at ${getNodeLabel(nextDestination)}`);
+      }
+
+      const nextAvoidNodes = parsed.avoid_nodes.filter(
+        (nodeName) => nodeName !== nextOrigin && nodeName !== nextDestination
+      );
+
+      setCurrentOrigin(nextOrigin);
+      setCurrentDestination(nextDestination);
+      setAvoidNodes(nextAvoidNodes);
+
+      const avoidedLabel = nextAvoidNodes.map(getNodeLabel).join(', ');
+
+      if (changes.length > 0 || nextAvoidNodes.length > 0) {
+        const summary = [...changes];
+        if (avoidedLabel) {
+          summary.push(`skip ${avoidedLabel}`);
+        }
+        setAiFeedback({ message: `Route set: ${summary.join(', ')}.`, tone: 'success' });
       } else {
-        nextDestination = CAMPUS_NODES.find((node) => node.name !== nextOrigin)?.name ?? nextDestination;
+        setAiFeedback({
+          message: 'Could not find any campus locations in that message. Try names like "main gate" or "library".',
+          tone: 'error',
+        });
       }
+    } finally {
+      aiSubmitInFlightRef.current = false;
+      setAiParseState('idle');
     }
-
-    const changes: string[] = [];
-
-    if (parsed.origin) {
-      changes.push(`start at ${getNodeLabel(nextOrigin)}`);
-    }
-
-    if (parsed.destination) {
-      changes.push(`end at ${getNodeLabel(nextDestination)}`);
-    }
-
-    const nextAvoidNodes = parsed.avoid_nodes.filter(
-      (nodeName) => nodeName !== nextOrigin && nodeName !== nextDestination
-    );
-
-    setCurrentOrigin(nextOrigin);
-    setCurrentDestination(nextDestination);
-    setAvoidNodes(nextAvoidNodes);
-
-    const avoidedLabel = nextAvoidNodes.map(getNodeLabel).join(', ');
-
-    if (changes.length > 0 || nextAvoidNodes.length > 0) {
-      const summary = [...changes];
-      if (avoidedLabel) {
-        summary.push(`skip ${avoidedLabel}`);
-      }
-      setAiFeedback({ message: `Route set: ${summary.join(', ')}.`, tone: 'success' });
-    } else {
-      setAiFeedback({
-        message: 'Could not find any campus locations in that message. Try names like "main gate" or "library".',
-        tone: 'error',
-      });
-    }
-
-    setAiParseState('idle');
   }
 
   function handleSwapRoute() {
     setCurrentOrigin(currentDestination);
     setCurrentDestination(currentOrigin);
+    setAvoidNodes([]);
+    setWaypoints([]);
   }
 
   function handleNodeToggleAvoid(nodeName: string) {
@@ -1845,7 +1923,8 @@ export function Dashboard() {
     );
   }
 
-  function handleShareLink() {    if (typeof window === 'undefined') {
+  function handleShareLink() {
+    if (typeof window === 'undefined') {
       return;
     }
 
@@ -1854,6 +1933,11 @@ export function Dashboard() {
       destination: currentDestination,
       avoidNodes,
       waypoints,
+      algorithm,
+      softAvoidance,
+      accessibleOnly,
+      timeOfDay,
+      speedMs: routeStepMs,
     });
 
     const confirmCopy = () => {
@@ -1902,10 +1986,12 @@ export function Dashboard() {
     }
 
     if (isAnimationRunning) {
+      userPausedRef.current = true;
       setIsAnimationRunning(false);
       return;
     }
 
+    userPausedRef.current = false;
     setIsAnimationRunning(timelineStep < effectiveTotalSteps);
   }
 
@@ -1914,6 +2000,7 @@ export function Dashboard() {
       return;
     }
 
+    userPausedRef.current = false;
     setTimelineStep(1);
     setIsAnimationRunning(true);
     vibrateRouteStart();
@@ -2010,6 +2097,7 @@ export function Dashboard() {
     avoidNodes,
     routeError: effectiveRouteError,
     routePath: effectiveRoutePath,
+    edges: effectiveEdges,
     sceneStepIndex: effectiveSceneStepIndex,
     zoomLevel: mapZoomLevel,
     isThreeDimensional,

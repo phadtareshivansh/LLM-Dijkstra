@@ -219,7 +219,7 @@ function firstNodeMention(value: string): string | null {
 function splitAvoidClause(userInput: string): { routeText: string; avoidText: string } {
   const match = AVOID_KEYWORD_PATTERN.exec(userInput);
 
-  if (!match || match.index < 0) {
+  if (!match) {
     return {
       routeText: userInput,
       avoidText: '',

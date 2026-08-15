@@ -34,4 +34,21 @@ describe('buildShareUrl', () => {
 
     expect(url).toBe('https://example.com/?origin=Library&destination=Cafeteria');
   });
+
+  it('encodes the routing settings', () => {
+    const url = buildShareUrl(BASE_URL, {
+      origin: 'Main_Gate',
+      destination: 'Library',
+      avoidNodes: [],
+      algorithm: 'astar',
+      softAvoidance: true,
+      accessibleOnly: true,
+      timeOfDay: 'night',
+      speedMs: 400,
+    });
+
+    expect(url).toBe(
+      'https://example.com/campus/?origin=Main_Gate&destination=Library&algorithm=astar&softAvoidance=true&accessibleOnly=true&timeOfDay=night&speed=400'
+    );
+  });
 });
