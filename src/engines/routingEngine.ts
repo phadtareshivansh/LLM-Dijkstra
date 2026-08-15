@@ -2,6 +2,7 @@ import { Edge, Node } from '../data/themeConstants';
 import {
   buildAccessibleAdjacencyMap,
   getNodeIds,
+  pathDistance,
   reconstructPath,
 } from './graphUtils';
 
@@ -12,12 +13,14 @@ export interface SearchStats {
 export interface RoutingResult {
   path: string[];
   distance: number;
+  cost?: number;
   error?: string;
   segments?: RoutingResult[];
   stats?: SearchStats;
 }
 
 export const UNREACHABLE_ERROR = 'Destination is unreachable with the current navigation constraints.';
+export const AVOID_ENDPOINT_ERROR = 'Cannot avoid the start or end point.';
 
 export interface SoftAvoidanceConfig {
   penalty: number;
@@ -74,8 +77,12 @@ export function dijkstraShortestPath(
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
-      error: UNREACHABLE_ERROR,
+      error: AVOID_ENDPOINT_ERROR,
     };
+  }
+
+  if (start === end) {
+    return { path: [start], distance: 0, stats: { expandedNodes: 0 } };
   }
 
   const distanceByNode = new Map<string, number>();
@@ -115,11 +122,17 @@ export function dijkstraShortestPath(
 
     if (currentNode === end) {
       const path = reconstructPath(previousByNode, end);
-      return {
+      const result: RoutingResult = {
         path,
-        distance: currentDistance,
+        distance: pathDistance(path, edges),
         stats: { expandedNodes },
       };
+
+      if (softAvoidance) {
+        result.cost = currentDistance;
+      }
+
+      return result;
     }
 
     for (const neighbor of adjacency.get(currentNode) ?? []) {
@@ -264,7 +277,25 @@ export function dijkstraTrace(
       steps: [],
       path: [],
       distance: Number.POSITIVE_INFINITY,
-      error: UNREACHABLE_ERROR,
+      error: AVOID_ENDPOINT_ERROR,
+    };
+  }
+
+  if (start === end) {
+    return {
+      steps: [
+        {
+          step: 0,
+          settledNode: start,
+          settledDistance: 0,
+          relaxations: [],
+          distanceByNode: new Map([[start, 0]]),
+          previousByNode: new Map(),
+          finished: true,
+        },
+      ],
+      path: [start],
+      distance: 0,
     };
   }
 
@@ -303,39 +334,41 @@ export function dijkstraTrace(
 
     unvisited.delete(currentNode);
 
+    const finished = currentNode === end;
+
     const relaxations: TraceRelaxation[] = [];
 
-    for (const neighbor of adjacency.get(currentNode) ?? []) {
-      if (hardAvoidSet.has(neighbor.nodeName)) {
-        continue;
+    if (!finished) {
+      for (const neighbor of adjacency.get(currentNode) ?? []) {
+        if (hardAvoidSet.has(neighbor.nodeName)) {
+          continue;
+        }
+
+        if (!unvisited.has(neighbor.nodeName)) {
+          continue;
+        }
+
+        let proposedDistance = currentDistance + neighbor.weight;
+
+        if (softAvoidSet.has(neighbor.nodeName) || softAvoidSet.has(currentNode)) {
+          proposedDistance += penalty;
+        }
+        const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
+        const improved = proposedDistance < knownDistance;
+
+        if (improved) {
+          distanceByNode.set(neighbor.nodeName, proposedDistance);
+          previousByNode.set(neighbor.nodeName, currentNode);
+        }
+
+        relaxations.push({
+          from: currentNode,
+          to: neighbor.nodeName,
+          proposedDistance,
+          improved,
+        });
       }
-
-      if (!unvisited.has(neighbor.nodeName)) {
-        continue;
-      }
-
-      let proposedDistance = currentDistance + neighbor.weight;
-
-      if (softAvoidSet.has(neighbor.nodeName) || softAvoidSet.has(currentNode)) {
-        proposedDistance += penalty;
-      }
-      const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
-      const improved = proposedDistance < knownDistance;
-
-      if (improved) {
-        distanceByNode.set(neighbor.nodeName, proposedDistance);
-        previousByNode.set(neighbor.nodeName, currentNode);
-      }
-
-      relaxations.push({
-        from: currentNode,
-        to: neighbor.nodeName,
-        proposedDistance,
-        improved,
-      });
     }
-
-    const finished = currentNode === end;
 
     steps.push({
       step: stepIndex,
@@ -370,6 +403,6 @@ export function dijkstraTrace(
   return {
     steps,
     path,
-    distance: lastStep.settledDistance,
+    distance: pathDistance(path, edges),
   };
 }

@@ -1,6 +1,6 @@
 import { Edge, Node, ACCESSIBLE_TAG } from '../data/themeConstants';
-import { buildAccessibleAdjacencyMap, euclideanDistance, getNodeIds, reconstructPath } from './graphUtils';
-import { DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
+import { buildAccessibleAdjacencyMap, euclideanDistance, getNodeIds, pathDistance, reconstructPath } from './graphUtils';
+import { AVOID_ENDPOINT_ERROR, DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
 
 function landmarkDistances(nodes: Node[], edges: Edge[], landmark: string, avoidSet: Set<string>): Map<string, number> {
   const distanceByNode = new Map<string, number>([[landmark, 0]]);
@@ -130,7 +130,7 @@ export function astarShortestPath(
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
-      error: UNREACHABLE_ERROR,
+      error: AVOID_ENDPOINT_ERROR,
     };
   }
 
@@ -188,11 +188,18 @@ export function astarShortestPath(
     expandedNodes += 1;
 
     if (bestNode === end) {
-      return {
-        path: reconstructPath(cameFrom, end),
-        distance: gScore.get(end) ?? Number.POSITIVE_INFINITY,
+      const path = reconstructPath(cameFrom, end);
+      const result: RoutingResult = {
+        path,
+        distance: pathDistance(path, edges),
         stats: { expandedNodes },
       };
+
+      if (softAvoidance) {
+        result.cost = gScore.get(end) ?? Number.POSITIVE_INFINITY;
+      }
+
+      return result;
     }
 
     const currentG = gScore.get(bestNode) ?? Number.POSITIVE_INFINITY;

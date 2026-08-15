@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bidirectionalShortestPath } from './bidirectional';
-import { dijkstraShortestPath } from './routingEngine';
+import { AVOID_ENDPOINT_ERROR, dijkstraShortestPath } from './routingEngine';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 const bidirectionalRoute = (start: string, end: string, avoidNodes: string[] = []) =>
@@ -65,7 +65,7 @@ describe('bidirectionalShortestPath', () => {
   it('refuses to start or end on an avoided node', () => {
     const result = bidirectionalRoute('Library', 'Main_Gate', ['Library']);
 
-    expect(result.error).toContain('unreachable');
+    expect(result.error).toBe(AVOID_ENDPOINT_ERROR);
     expect(result.path).toEqual([]);
   });
 });
@@ -82,7 +82,8 @@ describe('bidirectionalShortestPath soft avoidance', () => {
     );
 
     expect(result.error).toBeUndefined();
-    expect(result.distance).toBe(8.2);
+    expect(result.distance).toBe(8);
+    expect(result.cost).toBe(8.2);
     expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
   });
 

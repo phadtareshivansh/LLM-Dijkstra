@@ -1,6 +1,6 @@
 import { Edge, Node } from '../data/themeConstants';
-import { buildAccessibleAdjacencyMap, getNodeIds } from './graphUtils';
-import { DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
+import { buildAccessibleAdjacencyMap, getNodeIds, pathDistance } from './graphUtils';
+import { AVOID_ENDPOINT_ERROR, DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
 
 interface FrontierState {
   distanceByNode: Map<string, number>;
@@ -162,7 +162,7 @@ export function bidirectionalShortestPath(
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
-      error: UNREACHABLE_ERROR,
+      error: AVOID_ENDPOINT_ERROR,
     };
   }
 
@@ -229,9 +229,16 @@ export function bidirectionalShortestPath(
     };
   }
 
-  return {
-    path: reconstructMeetingPath(forward, backward, bestMeetingNode, start, end),
-    distance: bestDistance,
+  const path = reconstructMeetingPath(forward, backward, bestMeetingNode, start, end);
+  const result: RoutingResult = {
+    path,
+    distance: pathDistance(path, edges),
     stats: { expandedNodes },
   };
+
+  if (softAvoidance) {
+    result.cost = bestDistance;
+  }
+
+  return result;
 }

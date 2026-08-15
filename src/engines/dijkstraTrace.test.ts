@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
-import { UNREACHABLE_ERROR, dijkstraShortestPath, dijkstraTrace } from './routingEngine';
+import { AVOID_ENDPOINT_ERROR, UNREACHABLE_ERROR, dijkstraShortestPath, dijkstraTrace } from './routingEngine';
 
 describe('dijkstraTrace', () => {
   it('records the full exploration step by step for Main_Gate to Library', () => {
@@ -97,8 +97,25 @@ describe('dijkstraTrace', () => {
     expect(result.steps[0].settledNode).toBe('Library');
     expect(result.steps[0].settledDistance).toBe(0);
     expect(result.steps[0].finished).toBe(true);
+    expect(result.steps[0].relaxations).toEqual([]);
     expect(result.path).toEqual(['Library']);
     expect(result.distance).toBe(0);
+  });
+
+  it('does not relax neighbors after the destination settles', () => {
+    const result = dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Auditorium');
+
+    const finalStep = result.steps[result.steps.length - 1];
+
+    expect(finalStep.settledNode).toBe('Auditorium');
+    expect(finalStep.finished).toBe(true);
+    expect(finalStep.relaxations).toEqual([]);
+  });
+
+  it('explains that route endpoints cannot be avoided', () => {
+    const result = dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Main_Gate']);
+
+    expect(result.error).toBe(AVOID_ENDPOINT_ERROR);
   });
 
   it('honors accessible-only routes', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
-import { dijkstraShortestPath, dijkstraShortestPathWithWaypoints } from './routingEngine';
+import { AVOID_ENDPOINT_ERROR, dijkstraShortestPath, dijkstraShortestPathWithWaypoints } from './routingEngine';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 const shortestRoute = (start: string, end: string, avoidNodes: string[] = []) =>
@@ -53,7 +53,7 @@ describe('dijkstraShortestPath', () => {
   it('refuses to start or end on an avoided node', () => {
     const result = shortestRoute('Library', 'Main_Gate', ['Library']);
 
-    expect(result.error).toContain('unreachable');
+    expect(result.error).toBe(AVOID_ENDPOINT_ERROR);
     expect(result.path).toEqual([]);
   });
 
@@ -78,7 +78,8 @@ describe('dijkstraShortestPath soft avoidance', () => {
     );
 
     expect(result.error).toBeUndefined();
-    expect(result.distance).toBe(8.2);
+    expect(result.distance).toBe(8);
+    expect(result.cost).toBe(8.2);
     expect(result.path).toEqual(['Main_Gate', 'Auditorium', 'Hostel_A', 'Library']);
   });
 
@@ -109,6 +110,24 @@ describe('dijkstraShortestPath soft avoidance', () => {
 
     expect(result.error).toBeUndefined();
     expect(result.path).toContain('Auditorium');
+  });
+
+  it('reports physical distance and penalized cost separately', () => {
+    const result = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], { penalty: 100 });
+
+    expect(result.distance).toBe(9);
+    expect(result.cost).toBe(9);
+
+    const penalized = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Cafeteria', ['Science_Lab'], { penalty: 1 });
+
+    expect(penalized.distance).toBe(7);
+    expect(penalized.cost).toBe(9);
+  });
+
+  it('explains that route endpoints cannot be avoided', () => {
+    const result = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Library']);
+
+    expect(result.error).toBe(AVOID_ENDPOINT_ERROR);
   });
 });
 

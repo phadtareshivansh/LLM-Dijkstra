@@ -5,9 +5,8 @@ import { pathCost, pathDistance } from './graphUtils';
 export interface AlternativeRoute {
   path: string[];
   distance: number;
+  cost?: number;
 }
-
-export { pathDistance };
 
 function sharedPrefixLength(left: string[], right: string[]): number {
   let prefixLength = 0;
@@ -41,7 +40,7 @@ export function kShortestPaths(
   accessibleOnly = false,
   search: SearchFunction = dijkstraShortestPath
 ): AlternativeRoute[] {
-  if (limit <= 0) {
+  if (!Number.isFinite(limit) || limit <= 0) {
     return [];
   }
 
@@ -56,7 +55,11 @@ export function kShortestPaths(
     return [];
   }
 
-  found.push({ path: shortest.path, distance: shortest.distance });
+  found.push({
+    path: shortest.path,
+    distance: shortest.distance,
+    cost: shortest.cost,
+  });
 
   while (found.length < safeLimit) {
     const previous = found[found.length - 1];
@@ -115,13 +118,14 @@ export function kShortestPaths(
         const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
         freshCandidates.push({
           path: totalPath,
-          distance: pathCost(totalPath, edges, softAvoidance ? avoidNodes : [], penalty),
+          distance: pathDistance(totalPath, edges),
+          cost: softAvoidance ? pathCost(totalPath, edges, avoidNodes, penalty) : undefined,
         });
       }
     }
 
     candidatePool.push(...freshCandidates);
-    candidatePool.sort((left, right) => left.distance - right.distance);
+    candidatePool.sort((left, right) => (left.cost ?? left.distance) - (right.cost ?? right.distance));
 
     const best = candidatePool.shift();
 

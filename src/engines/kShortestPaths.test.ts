@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
-import { kShortestPaths, pathDistance } from './kShortestPaths';
-import { pathCost } from './graphUtils';
+import { kShortestPaths } from './kShortestPaths';
+import { pathCost, pathDistance } from './graphUtils';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 describe('kShortestPaths', () => {
@@ -91,9 +91,9 @@ describe('kShortestPaths', () => {
   it('keeps soft-avoided alternatives ordered by penalized cost and loopless', () => {
     const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], 3, { penalty: 100 });
 
-    const distances = routes.map((route) => route.distance);
+    const costs = routes.map((route) => route.cost ?? route.distance);
 
-    expect(distances).toEqual([...distances].sort((left, right) => left - right));
+    expect(costs).toEqual([...costs].sort((left, right) => left - right));
 
     for (const route of routes) {
       expect(new Set(route.path).size).toBe(route.path.length);
@@ -101,7 +101,17 @@ describe('kShortestPaths', () => {
 
     expect(routes).toHaveLength(2);
     expect(routes[0].distance).toBe(9);
-    expect(routes[1].distance).toBe(208);
+    expect(routes[1].distance).toBe(8);
+    expect(routes[1].cost).toBe(208);
+  });
+
+  it('reports penalized cost separately from physical distance', () => {
+    const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], 2, { penalty: 100 });
+
+    expect(routes[0].cost).toBe(9);
+    expect(routes[0].distance).toBe(9);
+    expect(routes[1].cost).toBe(208);
+    expect(routes[1].distance).toBe(8);
   });
 
   it('only offers accessible routes when accessible-only is enabled', () => {
