@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildElevationProfile, elevationStats } from './elevationUtils';
-import { CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_NODES } from '../data/themeConstants';
 
 describe('buildElevationProfile', () => {
   it('maps each node on the path to its elevation and step', () => {

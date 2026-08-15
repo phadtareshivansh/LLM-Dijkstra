@@ -1,5 +1,5 @@
-import { Algorithm } from './routingEngine';
-import { TimeOfDay } from './timeOfDay';
+import { Algorithm } from '../engines/routingEngine';
+import { TimeOfDay } from '../engines/timeOfDay';
 
 export const PREFERENCES_STORAGE_KEY = 'dijkstra-navigator-preferences';
 

@@ -1,5 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { THEME } from './themeConstants';
+import { THEME } from '../data/themeConstants';
 
 interface ErrorBoundaryProps {
   children: ReactNode;

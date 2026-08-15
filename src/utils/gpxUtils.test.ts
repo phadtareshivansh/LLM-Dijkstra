@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildGpx, gridToLatLon } from './gpxUtils';
-import { CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_NODES } from '../data/themeConstants';
 
 describe('gridToLatLon', () => {
   it('maps the 0-100 grid onto a small geographic span', () => {

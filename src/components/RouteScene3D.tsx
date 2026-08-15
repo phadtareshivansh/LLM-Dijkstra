@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Edge, Node, THEME } from './themeConstants';
-import { formatNodeLabel } from './nodeLabels';
+import { Edge, Node, THEME } from '../data/themeConstants';
+import { formatNodeLabel } from '../data/nodeLabels';
 
 export interface TraceStepSceneState {
   step: number;
@@ -34,7 +34,6 @@ const WORLD_WIDTH = 22;
 const WORLD_DEPTH = 14.5;
 const PRIMARY_COLOR = new THREE.Color(THEME.primaryAccent);
 const BASE_LINE_COLOR = new THREE.Color('#52606D');
-const AVOID_COLOR = new THREE.Color('#EF4444');
 const TRACE_COLOR = new THREE.Color('#38BDF8');
 const CAMPUS_BUILDINGS = [
   { x: 38, y: 13, width: 15, height: 10, rotate: -4, windows: 10 },
@@ -223,22 +222,6 @@ function createSegment(
   segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
 
   return segment;
-}
-
-function createBoxAt(
-  center: THREE.Vector3,
-  width: number,
-  height: number,
-  depth: number,
-  material: THREE.Material,
-  rotationY = 0
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-  mesh.position.set(center.x, center.y + height / 2, center.z);
-  mesh.rotation.y = rotationY;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 function createBuilding(building: (typeof CAMPUS_BUILDINGS)[number]): THREE.Group {

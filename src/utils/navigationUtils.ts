@@ -1,4 +1,4 @@
-import { CAMPUS_NODES } from './themeConstants';
+import { CAMPUS_NODES } from '../data/themeConstants';
 
 const EXTRA_NODE_ALIASES: Record<string, string[]> = {
   Library: ['lib', 'central library'],

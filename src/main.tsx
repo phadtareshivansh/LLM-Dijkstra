@@ -1,8 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import Dashboard from './Dashboard';
-import ErrorBoundary from './ErrorBoundary';
+import { registerSW } from 'virtual:pwa-register';
+import Dashboard from './components/Dashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 import './styles.css';
+
+registerSW({ immediate: true });
 
 const rootElement = document.getElementById('root');
 

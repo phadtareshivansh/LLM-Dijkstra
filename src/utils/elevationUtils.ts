@@ -1,4 +1,4 @@
-import { Node } from './themeConstants';
+import { Node } from '../data/themeConstants';
 
 export interface ElevationPoint {
   node: string;
