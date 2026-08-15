@@ -1510,10 +1510,10 @@ export function Dashboard() {
   const shareResetTimeoutRef = useRef<number | null>(null);
   const userPausedRef = useRef(false);
   const aiSubmitInFlightRef = useRef(false);
-  const latestStateRef = useRef({ origin: currentOrigin, destination: currentDestination, avoidNodes });
+  const latestStateRef = useRef({ origin: currentOrigin, destination: currentDestination, avoidNodes, waypoints });
 
   useEffect(() => {
-    latestStateRef.current = { origin: currentOrigin, destination: currentDestination, avoidNodes };
+    latestStateRef.current = { origin: currentOrigin, destination: currentDestination, avoidNodes, waypoints };
   });
 
   const effectiveEdges = useMemo(() => applyTimeOfDayEdges(CAMPUS_EDGES, timeOfDay), [timeOfDay]);
@@ -1846,6 +1846,7 @@ export function Dashboard() {
       origin: submitState.origin,
       destination: submitState.destination,
       avoid_nodes: submitState.avoidNodes,
+      waypoints: submitState.waypoints,
     });
 
     try {
@@ -1875,15 +1876,24 @@ export function Dashboard() {
       const nextAvoidNodes = parsed.avoid_nodes.filter(
         (nodeName) => nodeName !== nextOrigin && nodeName !== nextDestination
       );
+      const nextWaypoints = parsed.waypoints.filter(
+        (nodeName) =>
+          nodeName !== nextOrigin && nodeName !== nextDestination && !nextAvoidNodes.includes(nodeName)
+      );
 
       setCurrentOrigin(nextOrigin);
       setCurrentDestination(nextDestination);
       setAvoidNodes(nextAvoidNodes);
+      setWaypoints(nextWaypoints);
 
       const avoidedLabel = nextAvoidNodes.map(getNodeLabel).join(', ');
+      const waypointLabel = nextWaypoints.map(getNodeLabel).join(', ');
 
-      if (changes.length > 0 || nextAvoidNodes.length > 0) {
+      if (changes.length > 0 || nextAvoidNodes.length > 0 || nextWaypoints.length > 0) {
         const summary = [...changes];
+        if (waypointLabel) {
+          summary.push(`via ${waypointLabel}`);
+        }
         if (avoidedLabel) {
           summary.push(`skip ${avoidedLabel}`);
         }

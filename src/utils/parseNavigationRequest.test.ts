@@ -71,6 +71,36 @@ describe('parseNavigationRequest', () => {
     expect(parsed.destination).toBeNull();
     expect(parsed.avoid_nodes).toEqual([]);
   });
+
+  it('treats "via" phrases as waypoints, not endpoints', async () => {
+    const parsed = await parseNavigationRequest('go via the cafeteria to the library');
+
+    expect(parsed.origin).toBeNull();
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.waypoints).toEqual(['Cafeteria']);
+  });
+
+  it('extracts waypoints from a from/to route', async () => {
+    const parsed = await parseNavigationRequest('from the main gate to the library via the hostel');
+
+    expect(parsed.origin).toBe('Main_Gate');
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.waypoints).toEqual(['Hostel_A']);
+  });
+
+  it('supports the "through" wording for waypoints', async () => {
+    const parsed = await parseNavigationRequest('to the library through the science lab');
+
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.waypoints).toEqual(['Science_Lab']);
+  });
+
+  it('parses "instead of" phrases as avoidance', async () => {
+    const parsed = await parseNavigationRequest('take me to the library instead of the cafeteria');
+
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.avoid_nodes).toEqual(['Cafeteria']);
+  });
 });
 
 describe('withTimeout', () => {
@@ -185,6 +215,7 @@ describe('parseNavigationRequest caching', () => {
       origin: 'Main_Gate',
       destination: 'Library',
       avoid_nodes: [],
+      waypoints: [],
     });
 
     const cachedKeys = Array.from(memoryStore.keys());
@@ -198,6 +229,7 @@ describe('parseNavigationRequest with conversation context', () => {
     origin: 'Main_Gate',
     destination: 'Library',
     avoid_nodes: ['Hostel_A'],
+    waypoints: [],
   };
 
   it('keeps the current endpoints when the follow-up only adds an avoid', async () => {
@@ -206,6 +238,17 @@ describe('parseNavigationRequest with conversation context', () => {
     expect(parsed.origin).toBe('Main_Gate');
     expect(parsed.destination).toBe('Library');
     expect(parsed.avoid_nodes).toEqual(['Hostel_A', 'Cafeteria']);
+  });
+
+  it('adds waypoints from a "via" follow-up while keeping existing ones', async () => {
+    const parsed = await parseNavigationRequest('go via the cafeteria', {
+      ...context,
+      waypoints: ['Science_Lab'],
+    });
+
+    expect(parsed.origin).toBe('Main_Gate');
+    expect(parsed.destination).toBe('Library');
+    expect(parsed.waypoints).toEqual(['Science_Lab', 'Cafeteria']);
   });
 
   it('replaces avoids when the follow-up says "instead"', async () => {

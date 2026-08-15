@@ -4,21 +4,25 @@ export interface NavigationParseResult {
   origin: string | null;
   destination: string | null;
   avoid_nodes: string[];
+  waypoints: string[];
 }
 
 export interface ConversationContext {
   origin: string | null;
   destination: string | null;
   avoid_nodes: string[];
+  waypoints: string[];
 }
 
 const REPLACE_AVOID_KEYWORD_PATTERN = /\binstead\b/i;
+const VIA_KEYWORD_PATTERN = /\b(?:via|through|passing\s+by)\b/i;
 
 function buildContextPrompt(userInput: string, context: ConversationContext): string {
   const avoidedLabel = context.avoid_nodes.length > 0 ? context.avoid_nodes.join(', ') : 'none';
+  const waypointLabel = context.waypoints.length > 0 ? context.waypoints.join(', ') : 'none';
 
   return [
-    `Previous state: origin=${context.origin ?? 'unknown'}, destination=${context.destination ?? 'unknown'}, avoiding=${avoidedLabel}.`,
+    `Previous state: origin=${context.origin ?? 'unknown'}, destination=${context.destination ?? 'unknown'}, avoiding=${avoidedLabel}, via=${waypointLabel}.`,
     `The user is refining that route. Follow-up request: ${userInput}`,
   ].join(' ');
 }
@@ -37,6 +41,7 @@ function mergeWithContext(
     origin: parsed.origin ?? context.origin,
     destination: parsed.destination ?? context.destination,
     avoid_nodes,
+    waypoints: uniqueNodeNames([...context.waypoints, ...parsed.waypoints]),
   };
 }
 
@@ -46,10 +51,11 @@ const SYSTEM_PROMPT = [
   'Normalize spaces, hyphens, and informal names to the closest valid node name.',
   'Return only the structured fields defined by the schema.',
   'Do not add commentary, explanation, or extra keys.',
-  'If a field is missing, use null for origin and destination and an empty array for avoid_nodes.',
+  'If a field is missing, use null for origin and destination, and empty arrays for avoid_nodes and waypoints.',
+  'Phrases like "via the X" or "through X" are waypoints, not endpoints.',
 ].join(' ');
 
-const AVOID_KEYWORD_PATTERN = /\b(?:avoid(?:ing)?|without|skip(?:ping)?|exclude|except|not\s+via)\b/i;
+const AVOID_KEYWORD_PATTERN = /\b(?:avoid(?:ing)?|without|skip(?:ping)?|exclude|except|not\s+via|instead\s+of)\b/i;
 
 export const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
 
@@ -232,13 +238,28 @@ function splitAvoidClause(userInput: string): { routeText: string; avoidText: st
   };
 }
 
+function splitViaClause(routeText: string): { routeText: string; viaText: string } {
+  const match = VIA_KEYWORD_PATTERN.exec(routeText);
+
+  if (!match) {
+    return { routeText, viaText: '' };
+  }
+
+  return {
+    routeText: routeText.slice(0, match.index),
+    viaText: routeText.slice(match.index),
+  };
+}
+
 function parseNavigationRequestLocally(userInput: string): NavigationParseResult {
   const { routeText: splitRouteText, avoidText } = splitAvoidClause(userInput);
   const routeText = splitRouteText.trim() ? splitRouteText : userInput;
+  const { routeText: viaLessRouteText, viaText } = splitViaClause(routeText);
+  const viaRouteText = viaLessRouteText.trim() ? viaLessRouteText : routeText;
   let origin: string | null = null;
   let destination: string | null = null;
 
-  const fromToMatch = /\bfrom\s+(.+?)\s+(?:to|towards?|until)\s+(.+)$/i.exec(routeText);
+  const fromToMatch = /\bfrom\s+(.+?)\s+(?:to|towards?|until)\s+(.+)$/i.exec(viaRouteText);
 
   if (fromToMatch) {
     origin = firstNodeMention(fromToMatch[1]);
@@ -246,13 +267,20 @@ function parseNavigationRequestLocally(userInput: string): NavigationParseResult
   }
 
   if (!origin) {
-    const originMatch = /\b(?:from|start(?:ing)?(?:\s+at)?|source)\s+(.+?)(?=\s+(?:to|towards?|destination|target|end|finish|avoid|without|skip|except)\b|$)/i.exec(
-      routeText
+    const originMatch = /\b(?:from|start(?:ing)?(?:\s+at)?|source)\s+(.+?)(?=\s+(?:to|towards?|destination|target|end|finish|avoid|without|skip|except|via)\b|$)/i.exec(
+      viaRouteText
     );
     origin = originMatch ? firstNodeMention(originMatch[1]) : null;
   }
 
   if (!destination) {
+    const destinationMatch = /\b(?:to|towards?|destination|target|end(?:\s+at)?|finish(?:\s+at)?)\s+(.+?)(?=\s+(?:avoid|without|skip|except|via)\b|$)/i.exec(
+      viaRouteText
+    );
+    destination = destinationMatch ? firstNodeMention(destinationMatch[1]) : null;
+  }
+
+  if (!destination && viaRouteText !== routeText) {
     const destinationMatch = /\b(?:to|towards?|destination|target|end(?:\s+at)?|finish(?:\s+at)?)\s+(.+?)(?=\s+(?:avoid|without|skip|except)\b|$)/i.exec(
       routeText
     );
@@ -267,9 +295,15 @@ function parseNavigationRequestLocally(userInput: string): NavigationParseResult
       .filter((nodeName) => !endpointSet.has(nodeName))
   );
 
+  const waypoints = uniqueNodeNames(
+    findNodeMentions(viaText)
+      .map((mention) => mention.nodeName)
+      .filter((nodeName) => !endpointSet.has(nodeName) && !avoidNodes.includes(nodeName))
+  );
+
   if (!origin || !destination) {
     const routeMentions = uniqueNodeNames(findNodeMentions(routeText).map((mention) => mention.nodeName)).filter(
-      (nodeName) => !avoidNodes.includes(nodeName)
+      (nodeName) => !avoidNodes.includes(nodeName) && !waypoints.includes(nodeName)
     );
 
     if (!origin && routeMentions.length >= 2) {
@@ -289,6 +323,7 @@ function parseNavigationRequestLocally(userInput: string): NavigationParseResult
     origin,
     destination,
     avoid_nodes: avoidNodes,
+    waypoints,
   };
 }
 
@@ -301,6 +336,11 @@ function sanitizeNavigationParseResult(parsed: NavigationParseResult): Navigatio
         .map((nodeName) => resolveNodeName(nodeName))
         .filter((nodeName): nodeName is string => Boolean(nodeName))
     ),
+    waypoints: uniqueNodeNames(
+      parsed.waypoints
+        .map((nodeName) => resolveNodeName(nodeName))
+        .filter((nodeName): nodeName is string => Boolean(nodeName))
+    ),
   };
 }
 
@@ -309,6 +349,7 @@ function mergeParseResults(primary: NavigationParseResult, fallback: NavigationP
     origin: primary.origin ?? fallback.origin,
     destination: primary.destination ?? fallback.destination,
     avoid_nodes: uniqueNodeNames([...primary.avoid_nodes, ...fallback.avoid_nodes]),
+    waypoints: uniqueNodeNames([...primary.waypoints, ...fallback.waypoints]),
   };
 }
 
@@ -344,8 +385,15 @@ async function parseWithGemini(userInput: string, context?: ConversationContext)
             },
             description: 'Campus nodes to avoid while navigating.',
           },
+          waypoints: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.STRING,
+            },
+            description: 'Campus nodes to visit in order along the route, from "via X" or "through X" phrases.',
+          },
         },
-        required: ['origin', 'destination', 'avoid_nodes'],
+        required: ['origin', 'destination', 'avoid_nodes', 'waypoints'],
       },
     },
   });
