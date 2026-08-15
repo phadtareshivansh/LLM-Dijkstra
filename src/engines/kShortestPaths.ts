@@ -1,6 +1,6 @@
 import { Edge, Node } from '../data/themeConstants';
-import { dijkstraShortestPath, SearchFunction, SoftAvoidanceConfig } from './routingEngine';
-import { pathDistance } from './graphUtils';
+import { DEFAULT_SOFT_PENALTY, dijkstraShortestPath, SearchFunction, SoftAvoidanceConfig } from './routingEngine';
+import { pathCost, pathDistance } from './graphUtils';
 
 export interface AlternativeRoute {
   path: string[];
@@ -45,6 +45,8 @@ export function kShortestPaths(
     return [];
   }
 
+  const safeLimit = Math.max(1, Math.floor(limit));
+
   const found: AlternativeRoute[] = [];
   const candidatePool: AlternativeRoute[] = [];
 
@@ -56,7 +58,7 @@ export function kShortestPaths(
 
   found.push({ path: shortest.path, distance: shortest.distance });
 
-  while (found.length < limit) {
+  while (found.length < safeLimit) {
     const previous = found[found.length - 1];
     const freshCandidates: AlternativeRoute[] = [];
 
@@ -84,8 +86,19 @@ export function kShortestPaths(
       }
 
       const spurEdges = edges.filter((edge) => !blockedEdges.has(`${edge.from}->${edge.to}`));
-      const spurAvoidNodes = [...avoidNodes, ...rootPath.slice(0, -1)];
-      const spurResult = search(nodes, spurEdges, spurNode, end, spurAvoidNodes, softAvoidance, accessibleOnly);
+      const hardAvoidNodes = softAvoidance
+        ? rootPath.slice(0, -1)
+        : [...avoidNodes, ...rootPath.slice(0, -1)];
+      const spurResult = search(
+        nodes,
+        spurEdges,
+        spurNode,
+        end,
+        avoidNodes,
+        softAvoidance,
+        accessibleOnly,
+        hardAvoidNodes
+      );
 
       if (spurResult.error || spurResult.path.length === 0) {
         continue;
@@ -99,7 +112,11 @@ export function kShortestPaths(
         freshCandidates.some((route) => pathSignature(route.path) === signature);
 
       if (!alreadyKnown) {
-        freshCandidates.push({ path: totalPath, distance: pathDistance(totalPath, edges) });
+        const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
+        freshCandidates.push({
+          path: totalPath,
+          distance: pathCost(totalPath, edges, softAvoidance ? avoidNodes : [], penalty),
+        });
       }
     }
 

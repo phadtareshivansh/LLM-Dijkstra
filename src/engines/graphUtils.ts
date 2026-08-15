@@ -9,8 +9,12 @@ export function buildEdgeWeightMap(edges: Edge[]): Map<string, number> {
   const weightMap = new Map<string, number>();
 
   for (const edge of edges) {
-    weightMap.set(`${edge.from}->${edge.to}`, edge.weight);
-    weightMap.set(`${edge.to}->${edge.from}`, edge.weight);
+    const known = weightMap.get(`${edge.from}->${edge.to}`);
+
+    if (known === undefined || edge.weight < known) {
+      weightMap.set(`${edge.from}->${edge.to}`, edge.weight);
+      weightMap.set(`${edge.to}->${edge.from}`, edge.weight);
+    }
   }
 
   return weightMap;
@@ -33,6 +37,45 @@ export function pathDistance(path: string[], edges: Edge[]): number {
   return totalDistance;
 }
 
+export function pathCost(
+  path: string[],
+  edges: Edge[],
+  softAvoidNodes: string[] = [],
+  penalty = 0
+): number {
+  const softAvoidSet = new Set(softAvoidNodes);
+  const weightByPair = new Map<string, number>();
+
+  for (const edge of edges) {
+    const first = `${edge.from}->${edge.to}`;
+    const second = `${edge.to}->${edge.from}`;
+    const known = weightByPair.get(first);
+
+    if (known === undefined || edge.weight < known) {
+      weightByPair.set(first, edge.weight);
+      weightByPair.set(second, edge.weight);
+    }
+  }
+
+  let totalCost = 0;
+
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const weight = weightByPair.get(`${path[index]}->${path[index + 1]}`);
+
+    if (weight === undefined) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    totalCost += weight;
+
+    if (penalty > 0 && (softAvoidSet.has(path[index]) || softAvoidSet.has(path[index + 1]))) {
+      totalCost += penalty;
+    }
+  }
+
+  return totalCost;
+}
+
 export function getNodeIds(nodes: Node[]): Set<string> {
   return new Set(nodes.map((node) => node.name));
 }
@@ -49,7 +92,7 @@ export function reconstructPath(previousByNode: ReadonlyMap<string, string>, end
   return path;
 }
 
-export function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]> {
+function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Neighbor[]> {
   const adjacency = new Map<string, Neighbor[]>();
 
   for (const node of nodes) {
@@ -64,7 +107,7 @@ export function buildAdjacencyMap(nodes: Node[], edges: Edge[]): Map<string, Nei
   return adjacency;
 }
 
-export function isAccessibleEdge(edge: Edge, accessibleOnly: boolean): boolean {
+function isAccessibleEdge(edge: Edge, accessibleOnly: boolean): boolean {
   return !accessibleOnly || (edge.tags?.includes(ACCESSIBLE_TAG) ?? false);
 }
 

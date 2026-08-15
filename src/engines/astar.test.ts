@@ -22,6 +22,24 @@ describe('astarShortestPath', () => {
     expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
   });
 
+  it('stays reachable when an avoided landmark disconnects the heuristic', () => {
+    const result = astarRoute('Main_Gate', 'Cafeteria', ['Library']);
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(7);
+    expect(result.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria']);
+    expect(result.stats?.expandedNodes ?? 0).toBeGreaterThan(0);
+  });
+
+  it('reaches a node whose every landmark path is cut off', () => {
+    const result = astarRoute('Main_Gate', 'Auditorium', ['Cafeteria', 'Hostel_A']);
+
+    expect(result.error).toBeUndefined();
+    expect(result.distance).toBe(1);
+    expect(result.path).toEqual(['Main_Gate', 'Auditorium']);
+    expect(result.stats?.expandedNodes ?? 0).toBeGreaterThan(0);
+  });
+
   it('matches Dijkstra optimality across every node pair', () => {
     for (const from of CAMPUS_NODES) {
       for (const to of CAMPUS_NODES) {

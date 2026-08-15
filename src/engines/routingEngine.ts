@@ -32,10 +32,11 @@ export type SearchFunction = (
   end: string,
   avoidNodes: string[],
   softAvoidance?: SoftAvoidanceConfig,
-  accessibleOnly?: boolean
+  accessibleOnly?: boolean,
+  hardAvoidNodes?: string[]
 ) => RoutingResult;
 
-const DEFAULT_SOFT_PENALTY = 100;
+export const DEFAULT_SOFT_PENALTY = 100;
 
 export function dijkstraShortestPath(
   nodes: Node[],
@@ -44,11 +45,12 @@ export function dijkstraShortestPath(
   end: string,
   avoidNodes: string[] = [],
   softAvoidance?: SoftAvoidanceConfig,
-  accessibleOnly = false
+  accessibleOnly = false,
+  hardAvoidNodes?: string[]
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
-  const avoidSet = softAvoidance ? new Set<string>() : new Set(avoidNodes);
+  const hardAvoidSet = new Set(hardAvoidNodes ?? (softAvoidance ? [] : avoidNodes));
   const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
   const adjacency = buildAccessibleAdjacencyMap(nodes, edges, accessibleOnly);
 
@@ -68,7 +70,7 @@ export function dijkstraShortestPath(
     };
   }
 
-  if (avoidSet.has(start) || avoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
+  if (hardAvoidSet.has(start) || hardAvoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
@@ -83,7 +85,7 @@ export function dijkstraShortestPath(
   for (const node of nodes) {
     distanceByNode.set(node.name, Number.POSITIVE_INFINITY);
 
-    if (!avoidSet.has(node.name)) {
+    if (!hardAvoidSet.has(node.name)) {
       unvisited.add(node.name);
     }
   }
@@ -121,7 +123,7 @@ export function dijkstraShortestPath(
     }
 
     for (const neighbor of adjacency.get(currentNode) ?? []) {
-      if (avoidSet.has(neighbor.nodeName)) {
+      if (hardAvoidSet.has(neighbor.nodeName)) {
         continue;
       }
 
@@ -229,11 +231,15 @@ export function dijkstraTrace(
   edges: Edge[],
   start: string,
   end: string,
-  avoidNodes: string[] = []
+  avoidNodes: string[] = [],
+  softAvoidance?: SoftAvoidanceConfig,
+  accessibleOnly = false
 ): DijkstraTraceResult {
   const nodeIds = getNodeIds(nodes);
-  const avoidSet = new Set(avoidNodes);
-  const adjacency = buildAccessibleAdjacencyMap(nodes, edges, false);
+  const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
+  const hardAvoidSet = new Set(softAvoidance ? [] : avoidNodes);
+  const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
+  const adjacency = buildAccessibleAdjacencyMap(nodes, edges, accessibleOnly);
 
   if (!nodeIds.has(start)) {
     return {
@@ -253,7 +259,7 @@ export function dijkstraTrace(
     };
   }
 
-  if (avoidSet.has(start) || avoidSet.has(end)) {
+  if (hardAvoidSet.has(start) || hardAvoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
     return {
       steps: [],
       path: [],
@@ -269,7 +275,7 @@ export function dijkstraTrace(
   for (const node of nodes) {
     distanceByNode.set(node.name, Number.POSITIVE_INFINITY);
 
-    if (!avoidSet.has(node.name)) {
+    if (!hardAvoidSet.has(node.name)) {
       unvisited.add(node.name);
     }
   }
@@ -300,11 +306,19 @@ export function dijkstraTrace(
     const relaxations: TraceRelaxation[] = [];
 
     for (const neighbor of adjacency.get(currentNode) ?? []) {
-      if (avoidSet.has(neighbor.nodeName)) {
+      if (hardAvoidSet.has(neighbor.nodeName)) {
         continue;
       }
 
-      const proposedDistance = currentDistance + neighbor.weight;
+      if (!unvisited.has(neighbor.nodeName)) {
+        continue;
+      }
+
+      let proposedDistance = currentDistance + neighbor.weight;
+
+      if (softAvoidSet.has(neighbor.nodeName) || softAvoidSet.has(currentNode)) {
+        proposedDistance += penalty;
+      }
       const knownDistance = distanceByNode.get(neighbor.nodeName) ?? Number.POSITIVE_INFINITY;
       const improved = proposedDistance < knownDistance;
 

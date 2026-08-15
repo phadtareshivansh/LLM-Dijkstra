@@ -1,8 +1,6 @@
 import { Edge, Node } from '../data/themeConstants';
 import { buildAccessibleAdjacencyMap, getNodeIds } from './graphUtils';
-import { RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
-
-const DEFAULT_SOFT_PENALTY = 100;
+import { DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
 
 interface FrontierState {
   distanceByNode: Map<string, number>;
@@ -123,8 +121,9 @@ function reconstructMeetingPath(
 /**
  * Bidirectional Dijkstra shortest path.
  *
- * Expands frontiers from the start and end in alternation, preferring the
- * smaller frontier, and returns as soon as the two fronts meet. The result is
+ * Expands frontiers from the start and end in strict alternation, stopping
+ * only once a settled node's distance exceeds the best meeting cost, and
+ * terminates early when either frontier is exhausted. The result is
  * identical to plain Dijkstra but explores far fewer nodes on large graphs.
  */
 export function bidirectionalShortestPath(
@@ -134,11 +133,12 @@ export function bidirectionalShortestPath(
   end: string,
   avoidNodes: string[] = [],
   softAvoidance?: SoftAvoidanceConfig,
-  accessibleOnly = false
+  accessibleOnly = false,
+  hardAvoidNodes?: string[]
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
-  const avoidSet = softAvoidance ? new Set<string>() : new Set(avoidNodes);
+  const hardAvoidSet = new Set(hardAvoidNodes ?? (softAvoidance ? [] : avoidNodes));
   const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
   const adjacency = buildAccessibleAdjacencyMap(nodes, edges, accessibleOnly);
 
@@ -158,7 +158,7 @@ export function bidirectionalShortestPath(
     };
   }
 
-  if (avoidSet.has(start) || avoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
+  if (hardAvoidSet.has(start) || hardAvoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
@@ -167,11 +167,11 @@ export function bidirectionalShortestPath(
   }
 
   if (start === end) {
-    return { path: [start], distance: 0 };
+    return { path: [start], distance: 0, stats: { expandedNodes: 0 } };
   }
 
-  const forward = createFrontier(nodes, avoidSet, start);
-  const backward = createFrontier(nodes, avoidSet, end);
+  const forward = createFrontier(nodes, hardAvoidSet, start);
+  const backward = createFrontier(nodes, hardAvoidSet, end);
   let bestDistance = Number.POSITIVE_INFINITY;
   let bestMeetingNode: string | null = null;
   let expandForward = true;
@@ -205,7 +205,7 @@ export function bidirectionalShortestPath(
     const opposite = expandForward ? backward : forward;
     expandedNodes += 1;
 
-    relaxEdges(frontier, adjacency, current.nodeName, current.distance, avoidSet, softAvoidSet, penalty);
+    relaxEdges(frontier, adjacency, current.nodeName, current.distance, hardAvoidSet, softAvoidSet, penalty);
     expandForward = !expandForward;
 
     if (opposite.settled.has(current.nodeName)) {

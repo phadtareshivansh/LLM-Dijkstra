@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { astarShortestPath } from './astar';
 import { kShortestPaths, pathDistance } from './kShortestPaths';
+import { pathCost } from './graphUtils';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
 
 describe('kShortestPaths', () => {
@@ -87,6 +88,22 @@ describe('kShortestPaths', () => {
     expect(signatures).toContain('Main_Gate->Auditorium->Hostel_A->Library');
   });
 
+  it('keeps soft-avoided alternatives ordered by penalized cost and loopless', () => {
+    const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], 3, { penalty: 100 });
+
+    const distances = routes.map((route) => route.distance);
+
+    expect(distances).toEqual([...distances].sort((left, right) => left - right));
+
+    for (const route of routes) {
+      expect(new Set(route.path).size).toBe(route.path.length);
+    }
+
+    expect(routes).toHaveLength(2);
+    expect(routes[0].distance).toBe(9);
+    expect(routes[1].distance).toBe(208);
+  });
+
   it('only offers accessible routes when accessible-only is enabled', () => {
     const routes = kShortestPaths(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], 3, undefined, true);
 
@@ -115,5 +132,26 @@ describe('pathDistance', () => {
 
   it('returns infinity for an unknown edge', () => {
     expect(pathDistance(['Library', 'Nowhere'], CAMPUS_EDGES)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe('pathCost', () => {
+  it('matches pathDistance without soft avoidance', () => {
+    expect(pathCost(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library'], CAMPUS_EDGES)).toBe(9);
+  });
+
+  it('adds the penalty for every edge touching a soft-avoided node', () => {
+    const cost = pathCost(
+      ['Main_Gate', 'Auditorium', 'Hostel_A', 'Library'],
+      CAMPUS_EDGES,
+      ['Hostel_A'],
+      100
+    );
+
+    expect(cost).toBe(208);
+  });
+
+  it('returns infinity for an unknown edge', () => {
+    expect(pathCost(['Library', 'Nowhere'], CAMPUS_EDGES, [], 100)).toBe(Number.POSITIVE_INFINITY);
   });
 });

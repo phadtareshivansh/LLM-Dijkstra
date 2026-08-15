@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CAMPUS_EDGES, CAMPUS_NODES } from '../data/themeConstants';
-import { UNREACHABLE_ERROR, dijkstraTrace } from './routingEngine';
+import { UNREACHABLE_ERROR, dijkstraShortestPath, dijkstraTrace } from './routingEngine';
 
 describe('dijkstraTrace', () => {
   it('records the full exploration step by step for Main_Gate to Library', () => {
@@ -99,5 +99,24 @@ describe('dijkstraTrace', () => {
     expect(result.steps[0].finished).toBe(true);
     expect(result.path).toEqual(['Library']);
     expect(result.distance).toBe(0);
+  });
+
+  it('honors accessible-only routes', () => {
+    const trace = dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], undefined, true);
+    const route = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', [], undefined, true);
+
+    expect(trace.error).toBeUndefined();
+    expect(trace.path).toEqual(route.path);
+    expect(trace.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
+  });
+
+  it('applies soft-avoidance penalties to settled distances', () => {
+    const trace = dijkstraTrace(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], { penalty: 100 });
+    const route = dijkstraShortestPath(CAMPUS_NODES, CAMPUS_EDGES, 'Main_Gate', 'Library', ['Hostel_A'], { penalty: 100 });
+
+    expect(trace.error).toBeUndefined();
+    expect(trace.path).toEqual(route.path);
+    expect(trace.distance).toBe(route.distance);
+    expect(trace.path).toEqual(['Main_Gate', 'Science_Lab', 'Cafeteria', 'Library']);
   });
 });

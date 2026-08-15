@@ -1,8 +1,6 @@
 import { Edge, Node, ACCESSIBLE_TAG } from '../data/themeConstants';
 import { buildAccessibleAdjacencyMap, euclideanDistance, getNodeIds, reconstructPath } from './graphUtils';
-import { RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
-
-const DEFAULT_SOFT_PENALTY = 100;
+import { DEFAULT_SOFT_PENALTY, RoutingResult, SoftAvoidanceConfig, UNREACHABLE_ERROR } from './routingEngine';
 
 function landmarkDistances(nodes: Node[], edges: Edge[], landmark: string, avoidSet: Set<string>): Map<string, number> {
   const distanceByNode = new Map<string, number>([[landmark, 0]]);
@@ -103,11 +101,12 @@ export function astarShortestPath(
   end: string,
   avoidNodes: string[] = [],
   softAvoidance?: SoftAvoidanceConfig,
-  accessibleOnly = false
+  accessibleOnly = false,
+  hardAvoidNodes?: string[]
 ): RoutingResult {
   const nodeIds = getNodeIds(nodes);
   const softAvoidSet = softAvoidance ? new Set(avoidNodes) : new Set<string>();
-  const avoidSet = softAvoidance ? new Set<string>() : new Set(avoidNodes);
+  const hardAvoidSet = new Set(hardAvoidNodes ?? (softAvoidance ? [] : avoidNodes));
   const penalty = softAvoidance?.penalty ?? DEFAULT_SOFT_PENALTY;
   const adjacency = buildAccessibleAdjacencyMap(nodes, edges, accessibleOnly);
 
@@ -127,7 +126,7 @@ export function astarShortestPath(
     };
   }
 
-  if (avoidSet.has(start) || avoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
+  if (hardAvoidSet.has(start) || hardAvoidSet.has(end) || softAvoidSet.has(start) || softAvoidSet.has(end)) {
     return {
       path: [],
       distance: Number.POSITIVE_INFINITY,
@@ -136,26 +135,31 @@ export function astarShortestPath(
   }
 
   if (start === end) {
-    return { path: [start], distance: 0 };
+    return { path: [start], distance: 0, stats: { expandedNodes: 0 } };
   }
 
   const heuristicEdges = accessibleOnly
     ? edges.filter((edge) => edge.tags?.includes(ACCESSIBLE_TAG))
     : edges;
   const [landmarkA, landmarkB] = selectLandmarks(nodes);
-  const distanceFromA = landmarkDistances(nodes, heuristicEdges, landmarkA.name, avoidSet);
-  const distanceFromB = landmarkDistances(nodes, heuristicEdges, landmarkB.name, avoidSet);
+  const distanceFromA = landmarkDistances(nodes, heuristicEdges, landmarkA.name, hardAvoidSet);
+  const distanceFromB = landmarkDistances(nodes, heuristicEdges, landmarkB.name, hardAvoidSet);
 
   const heuristic = (nodeName: string): number => {
-    const landmarkDistanceA = distanceFromA.get(nodeName) ?? Number.POSITIVE_INFINITY;
-    const landmarkDistanceB = distanceFromB.get(nodeName) ?? Number.POSITIVE_INFINITY;
-    const goalDistanceA = distanceFromA.get(end) ?? 0;
-    const goalDistanceB = distanceFromB.get(end) ?? 0;
+    const goalDistanceA = distanceFromA.get(end);
+    const goalDistanceB = distanceFromB.get(end);
+    let best = 0;
 
-    return Math.max(
-      Math.abs(landmarkDistanceA - goalDistanceA),
-      Math.abs(landmarkDistanceB - goalDistanceB)
-    );
+    for (const [nodeDistance, goalDistance] of [
+      [distanceFromA.get(nodeName), goalDistanceA],
+      [distanceFromB.get(nodeName), goalDistanceB],
+    ] as const) {
+      if (nodeDistance !== undefined && goalDistance !== undefined && Number.isFinite(nodeDistance) && Number.isFinite(goalDistance)) {
+        best = Math.max(best, Math.abs(nodeDistance - goalDistance));
+      }
+    }
+
+    return best;
   };
 
   const cameFrom = new Map<string, string>();
@@ -194,7 +198,7 @@ export function astarShortestPath(
     const currentG = gScore.get(bestNode) ?? Number.POSITIVE_INFINITY;
 
     for (const neighbor of adjacency.get(bestNode) ?? []) {
-      if (avoidSet.has(neighbor.nodeName)) {
+      if (hardAvoidSet.has(neighbor.nodeName)) {
         continue;
       }
 
