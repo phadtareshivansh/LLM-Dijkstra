@@ -5,7 +5,3 @@ export function formatNodeLabel(nodeName: string): string {
 
   return nodeName.replace(/_/g, ' ');
 }
-
-export function getDisplayLabel(nodeName: string): string {
-  return nodeName.replace(/_/g, ' ');
-}

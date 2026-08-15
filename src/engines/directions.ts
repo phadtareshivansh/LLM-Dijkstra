@@ -1,6 +1,6 @@
 import { Edge } from '../data/themeConstants';
 import { buildEdgeWeightMap } from './graphUtils';
-import { getDisplayLabel } from '../data/nodeLabels';
+import { formatNodeLabel } from '../data/nodeLabels';
 
 export interface NavigationLeg {
   index: number;
@@ -49,8 +49,8 @@ export function buildDirections(path: string[], edges: Edge[]): NavigationLeg[] 
  */
 export function formatDirectionText(leg: NavigationLeg): string {
   const distanceLabel = `${leg.distance} unit${leg.distance === 1 ? '' : 's'}`;
-  const fromLabel = getDisplayLabel(leg.from);
-  const toLabel = getDisplayLabel(leg.to);
+  const fromLabel = formatNodeLabel(leg.from);
+  const toLabel = formatNodeLabel(leg.to);
 
   return `${leg.index + 1}. Head from ${fromLabel} to ${toLabel} (${distanceLabel}).`;
 }

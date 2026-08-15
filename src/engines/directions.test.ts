@@ -33,7 +33,7 @@ describe('buildDirections', () => {
 describe('formatDirectionText', () => {
   it('formats a leg as plain English', () => {
     expect(formatDirectionText({ index: 0, from: 'Main_Gate', to: 'Auditorium', distance: 1, cumulativeDistance: 1 })).toBe(
-      '1. Head from Main Gate to Auditorium (1 unit).'
+      '1. Head from Main Entrance to Auditorium (1 unit).'
     );
   });
 

@@ -1,4 +1,4 @@
-import { Node } from './themeConstants';
+import { Node } from '../data/themeConstants';
 
 const GRID_ORIGIN_LAT = 19.076;
 const GRID_ORIGIN_LON = 72.8777;
@@ -26,7 +26,7 @@ export function buildGpx(
     .filter((node): node is Node => Boolean(node))
     .map((node) => {
       const { lat, lon } = gridToLatLon(node);
-      return `<wpt lat="${lat}" lon="${lon}"><name>${node.name}</name></wpt>`;
+      return `<wpt lat="${lat}" lon="${lon}"><name>${escapeXml(node.name)}</name></wpt>`;
     })
     .join('');
 
@@ -35,7 +35,7 @@ export function buildGpx(
     .filter((node): node is Node => Boolean(node))
     .map((node) => {
       const { lat, lon } = gridToLatLon(node);
-      return `<trkpt lat="${lat}" lon="${lon}"><name>${node.name}</name></trkpt>`;
+      return `<trkpt lat="${lat}" lon="${lon}"><name>${escapeXml(node.name)}</name></trkpt>`;
     })
     .join('');
 
@@ -69,7 +69,7 @@ export function downloadGpx(
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function escapeXml(value: string): string {

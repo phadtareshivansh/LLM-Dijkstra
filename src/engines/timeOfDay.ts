@@ -13,8 +13,8 @@ function scaleWeight(weight: number, multiplier: number): number {
  * Returns a modified edge list for the given time of day.
  *
  * - `off-peak`: edges are unchanged.
- * - `peak`: every edge gets heavier (1.6x) and narrow stairs-scale routes
- *   get heavier still (2.5x), so the optimal path can change.
+ * - `peak`: every edge gets heavier (1.6x) and stairs-scale routes get
+ *   heavier still (4x), so the optimal path can change.
  * - `night`: edges tagged `night-closed` are removed (venues shut).
  */
 export function applyTimeOfDayEdges(edges: Edge[], timeOfDay: TimeOfDay): Edge[] {
