@@ -8,6 +8,8 @@ export interface ShareLinkInput {
   accessibleOnly?: boolean;
   timeOfDay?: string;
   speedMs?: number;
+  viewMode?: string;
+  showEdgeWeights?: boolean;
 }
 
 /**
@@ -48,6 +50,14 @@ export function buildShareUrl(baseUrl: string, options: ShareLinkInput): string 
 
   if (options.speedMs !== undefined) {
     url.searchParams.set('speed', String(options.speedMs));
+  }
+
+  if (options.viewMode) {
+    url.searchParams.set('viewMode', options.viewMode);
+  }
+
+  if (options.showEdgeWeights !== undefined) {
+    url.searchParams.set('showEdgeWeights', String(options.showEdgeWeights));
   }
 
   return url.toString();

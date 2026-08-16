@@ -23,6 +23,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     console.error('Application crashed:', error, info.componentStack);
   }
 
+  handleTryAgain = () => {
+    this.setState({ hasError: false });
+  };
+
   render() {
     if (this.state.hasError) {
       return (
@@ -39,16 +43,25 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             Something went <span style={{ color: THEME.primaryAccent }}>wrong</span>
           </h1>
           <p className="mt-4 max-w-md leading-7 text-white/70">
-            The campus map hit an unexpected error. Reload the page to get back to navigating.
+            The campus map hit an unexpected error. Try again below, or reload the page to get back to navigating.
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-8 rounded-md px-6 py-3 text-base font-semibold text-[#031610]"
-            style={{ background: `linear-gradient(135deg, ${THEME.primaryAccent} 0%, #35E9A8 100%)` }}
-          >
-            Reload app
-          </button>
+          <div className="mt-8 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={this.handleTryAgain}
+              className="rounded-md px-6 py-3 text-base font-semibold text-[#031610]"
+              style={{ background: `linear-gradient(135deg, ${THEME.primaryAccent} 0%, #35E9A8 100%)` }}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-md border border-white/18 px-6 py-3 text-base font-semibold text-white/80 transition-colors hover:border-emerald-300/40"
+            >
+              Reload app
+            </button>
+          </div>
         </div>
       );
     }
