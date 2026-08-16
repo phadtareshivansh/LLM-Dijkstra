@@ -63,8 +63,11 @@ const PARSE_CACHE_KEY_PREFIX = 'dijkstra-navigator:parse:';
 export const PARSE_CACHE_TTL_MS = 30 * 60 * 1000;
 export const PARSE_CACHE_MAX_ENTRIES = 50;
 
+export type ParseSource = 'cache' | 'gemini' | 'local';
+
 interface CachedParseEntry {
   result: NavigationParseResult;
+  source: ParseSource;
   timestamp: number;
 }
 
@@ -84,7 +87,7 @@ function getCacheStore(): Storage | null {
   }
 }
 
-function getCachedParse(input: string): NavigationParseResult | null {
+function getCachedParse(input: string): { result: NavigationParseResult; source: ParseSource } | null {
   const store = getCacheStore();
 
   if (!store) {
@@ -105,7 +108,10 @@ function getCachedParse(input: string): NavigationParseResult | null {
       return null;
     }
 
-    return sanitizeNavigationParseResult(cached.result);
+    return {
+      result: sanitizeNavigationParseResult(cached.result),
+      source: cached.source === 'gemini' || cached.source === 'local' ? cached.source : 'local',
+    };
   } catch {
     return null;
   }
@@ -168,7 +174,7 @@ function evictStaleCacheEntries(store: Storage): void {
   }
 }
 
-function setCachedParse(input: string, result: NavigationParseResult): void {
+function setCachedParse(input: string, result: NavigationParseResult, source: ParseSource): void {
   const store = getCacheStore();
 
   if (!store) {
@@ -178,6 +184,7 @@ function setCachedParse(input: string, result: NavigationParseResult): void {
   try {
     const entry: CachedParseEntry = {
       result,
+      source,
       timestamp: Date.now(),
     };
     store.setItem(PARSE_CACHE_KEY_PREFIX + input, JSON.stringify(entry));
@@ -409,31 +416,44 @@ async function parseWithGemini(userInput: string, context?: ConversationContext)
   return sanitizeNavigationParseResult(JSON.parse(rawText) as NavigationParseResult);
 }
 
+export async function parseNavigationRequestWithSource(
+  userInput: string,
+  context?: ConversationContext
+): Promise<{ result: NavigationParseResult; source: ParseSource }> {
+  if (!context) {
+    const cachedParse = getCachedParse(userInput);
+
+    if (cachedParse) {
+      return cachedParse;
+    }
+  }
+
+  const fallbackParse = parseNavigationRequestLocally(userInput);
+
+  try {
+    const geminiParse = await parseWithGemini(userInput, context);
+    const mergedParse = mergeParseResults(geminiParse, fallbackParse);
+    const result = context ? mergeWithContext(userInput, mergedParse, context) : mergedParse;
+
+    if (!context) {
+      setCachedParse(userInput, result, 'gemini');
+    }
+
+    return { result, source: 'gemini' };
+  } catch {
+    const result = context ? mergeWithContext(userInput, fallbackParse, context) : fallbackParse;
+
+    if (!context) {
+      setCachedParse(userInput, result, 'local');
+    }
+
+    return { result, source: 'local' };
+  }
+}
+
 export async function parseNavigationRequest(
   userInput: string,
   context?: ConversationContext
 ): Promise<NavigationParseResult> {
-  const cachedParse = context ? null : getCachedParse(userInput);
-
-  if (cachedParse) {
-    return cachedParse;
-  }
-
-  const fallbackParse = parseNavigationRequestLocally(userInput);
-  let parseResult: NavigationParseResult;
-
-  try {
-    const geminiParse = await parseWithGemini(userInput, context);
-    parseResult = mergeParseResults(geminiParse, fallbackParse);
-  } catch {
-    parseResult = fallbackParse;
-  }
-
-  if (context) {
-    return mergeWithContext(userInput, parseResult, context);
-  }
-
-  setCachedParse(userInput, parseResult);
-
-  return parseResult;
+  return (await parseNavigationRequestWithSource(userInput, context)).result;
 }
