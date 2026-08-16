@@ -17,6 +17,7 @@ export interface TraceStepSceneState {
 export interface RouteScene3DProps {
   nodes: Node[];
   edges: Edge[];
+  campusEdges?: Edge[];
   activePath: string[];
   avoidNodes: string[];
   stepIndex: number;
@@ -388,6 +389,7 @@ export function RouteScene3D({
   traceState = null,
   traceEndpoints = [],
   showWeightLabels = false,
+  campusEdges,
   onNodeClick,
 }: RouteScene3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -669,7 +671,7 @@ export function RouteScene3D({
       }
     }
 
-    for (const edge of edges) {
+    for (const edge of campusEdges ?? edges) {
       const fromPoint = nodePointMap.get(edge.from);
       const toPoint = nodePointMap.get(edge.to);
 
@@ -1168,7 +1170,8 @@ export function RouteScene3D({
                   minWidth: '30px',
                   minHeight: '30px',
                   transform: 'translate(-50%, -50%)',
-                  backgroundColor: isAvoided ? 'rgba(248,113,113,0.18)' : 'transparent',
+                  backgroundColor: isAvoided ? 'rgba(248,113,113,0.18)' : 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   boxShadow: isAvoided ? '0 0 12px rgba(239,68,68,0.4)' : 'none',
                 }}
               >

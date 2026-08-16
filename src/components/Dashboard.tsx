@@ -22,7 +22,7 @@ type ViewMode = 'path' | 'dijkstra';
 
 interface AiFeedback {
   message: string;
-  tone: 'success' | 'error';
+  tone: 'success' | 'warning' | 'error';
 }
 
 const ROUTE_STEP_MS = 920;
@@ -746,6 +746,7 @@ function MapView({
           <RouteScene3D
             nodes={CAMPUS_NODES}
             edges={edges}
+            campusEdges={CAMPUS_EDGES}
             activePath={routePath}
             avoidNodes={avoidNodes}
             stepIndex={sceneStepIndex}
@@ -1222,7 +1223,7 @@ function ControlPanel({
           {aiFeedback ? (
             <p
               role="status"
-              className={`mt-2 text-sm leading-5 ${aiFeedback.tone === 'success' ? 'text-emerald-200' : 'text-red-200'}`}
+              className={`mt-2 text-sm leading-5 ${aiFeedback.tone === 'success' ? 'text-emerald-200' : aiFeedback.tone === 'warning' ? 'text-amber-200' : 'text-red-200'}`}
             >
               {aiFeedback.message}
             </p>
@@ -1450,7 +1451,24 @@ function MinimizedPanelButton({ origin, destination, onExpand }: MinimizedPanelB
 }
 
 export function Dashboard() {
-  const [isPanelMinimized, setIsPanelMinimized] = useState(() => hasQueryValue('panel', 'minimized'));
+  const [isPanelMinimized, setIsPanelMinimized] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    if (hasQueryValue('panel', 'minimized')) {
+      return true;
+    }
+    try {
+      const stored = localStorage.getItem('dijkstra-navigator-preferences');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed.panelMinimized === true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
   const [currentOrigin, setCurrentOrigin] = useState(() => getQueryNode('origin', DEFAULT_SOURCE));
   const [currentDestination, setCurrentDestination] = useState(() => {
     const requested = getQueryNode('destination', DEFAULT_DESTINATION);
@@ -1516,6 +1534,11 @@ export function Dashboard() {
     const requestedShowEdgeWeights = params.get('showEdgeWeights');
     if (requestedShowEdgeWeights === 'true' || requestedShowEdgeWeights === 'false') {
       next.showEdgeWeights = requestedShowEdgeWeights === 'true';
+    }
+
+    const requestedPanel = params.get('panel');
+    if (requestedPanel === 'minimized') {
+      next.panelMinimized = true;
     }
 
     return next;
@@ -1637,6 +1660,7 @@ export function Dashboard() {
   );
 
   const calculatedRoutePath = routeResult.path;
+  const prevRoutePathLengthRef = useRef(calculatedRoutePath.length);
   const calculatedDistance = routeResult.distance;
   const routeError = routeResult.error ?? null;
   const totalSteps = getTimelineStepCount(calculatedDistance, calculatedRoutePath.length);
@@ -1762,9 +1786,17 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const pathLen = calculatedRoutePath.length;
+    const lengthChanged = pathLen !== prevRoutePathLengthRef.current;
+    prevRoutePathLengthRef.current = pathLen;
+
+    if (!lengthChanged && userPausedRef.current) {
+      return;
+    }
+
     setTimelineStep(1);
     setIsAnimationRunning(userPausedRef.current ? false : effectiveCanAnimate);
-  }, [routeSignature, effectiveCanAnimate]);
+  }, [routeSignature, effectiveCanAnimate, calculatedRoutePath.length]);
 
   useEffect(() => {
     if (!isAnimationRunning || !effectiveCanAnimate) {
@@ -1936,7 +1968,7 @@ export function Dashboard() {
         }
 
         const degradedNote = parseSource === 'local' ? ' (AI unavailable — used the built-in parser.)' : '';
-        setAiFeedback({ message: `Route set: ${summary.join(', ')}.${degradedNote}`, tone: parseSource === 'local' ? 'error' : 'success' });
+        setAiFeedback({ message: `Route set: ${summary.join(', ')}.${degradedNote}`, tone: parseSource === 'local' ? 'warning' : 'success' });
       } else {
         setAiFeedback({
           message: 'Could not find any campus locations in that message. Try names like "main gate" or "library".',
