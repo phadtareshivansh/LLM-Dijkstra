@@ -7,16 +7,18 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  retryCount: number;
+  isRetrying: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, retryCount: 0, isRetrying: false };
   }
 
   static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, retryCount: 0, isRetrying: false };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -24,7 +26,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   handleTryAgain = () => {
-    this.setState({ hasError: false });
+    this.setState({ hasError: false, isRetrying: true, retryCount: this.state.retryCount + 1 });
+    setTimeout(() => {
+      this.setState({ isRetrying: false });
+    }, 2000);
   };
 
   render() {
@@ -49,10 +54,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <button
               type="button"
               onClick={this.handleTryAgain}
-              className="rounded-md px-6 py-3 text-base font-semibold text-[#031610]"
+              disabled={this.state.isRetrying}
+              className="rounded-md px-6 py-3 text-base font-semibold text-[#031610] disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: `linear-gradient(135deg, ${THEME.primaryAccent} 0%, #35E9A8 100%)` }}
             >
-              Try again
+              {this.state.isRetrying ? 'Retrying…' : this.state.retryCount > 0 ? `Try again (${this.state.retryCount})` : 'Try again'}
             </button>
             <button
               type="button"

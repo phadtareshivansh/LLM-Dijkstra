@@ -16,8 +16,8 @@ describe('preferences', () => {
   });
 
   it('round-trips saved preferences', () => {
-    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night' });
-    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night' });
+    savePreferences({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night', panelMinimized: false });
+    expect(loadPreferences()).toEqual({ viewMode: 'dijkstra', showEdgeWeights: false, speedMs: 400, softAvoidance: false, accessibleOnly: true, algorithm: 'astar', timeOfDay: 'night', panelMinimized: false });
   });
 
   it('round-trips the bidirectional algorithm preference', () => {

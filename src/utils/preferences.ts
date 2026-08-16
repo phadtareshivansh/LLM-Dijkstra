@@ -11,6 +11,7 @@ export const DEFAULT_PREFERENCES = {
   accessibleOnly: false,
   algorithm: 'dijkstra',
   timeOfDay: 'off-peak',
+  panelMinimized: false,
 } as const;
 
 export type ViewModePreference = 'path' | 'dijkstra';
@@ -23,6 +24,7 @@ export interface Preferences {
   accessibleOnly: boolean;
   algorithm: Algorithm;
   timeOfDay: TimeOfDay;
+  panelMinimized: boolean;
 }
 
 export function loadPreferences(): Preferences {
@@ -55,6 +57,8 @@ export function loadPreferences(): Preferences {
         parsed.algorithm === 'astar' || parsed.algorithm === 'bidirectional' ? parsed.algorithm : 'dijkstra',
       timeOfDay:
         parsed.timeOfDay === 'peak' || parsed.timeOfDay === 'night' ? parsed.timeOfDay : 'off-peak',
+      panelMinimized:
+        typeof parsed.panelMinimized === 'boolean' ? parsed.panelMinimized : DEFAULT_PREFERENCES.panelMinimized,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
