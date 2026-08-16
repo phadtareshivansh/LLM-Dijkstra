@@ -139,7 +139,7 @@ describe('Dashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Night' }));
 
-    expect(await screen.findByText(/8 units/)).toBeTruthy();
+    expect(await screen.findByText(/stops · 8 units/)).toBeTruthy();
   });
 
   it('reports expansion counts for every algorithm', () => {

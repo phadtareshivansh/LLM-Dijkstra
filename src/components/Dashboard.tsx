@@ -8,7 +8,7 @@ import { bidirectionalShortestPath } from '../engines/bidirectional';
 import { kShortestPaths, AlternativeRoute } from '../engines/kShortestPaths';
 import { buildDirections } from '../engines/directions';
 import { buildShareUrl } from '../utils/shareUtils';
-import { parseNavigationRequest } from '../utils/parseNavigationRequest';
+import { parseNavigationRequestWithSource } from '../utils/parseNavigationRequest';
 import { TraceLogEntry, describeTraceStep } from '../engines/traceLog';
 import { formatNodeLabel as getNodeLabel } from '../data/nodeLabels';
 import { loadPreferences, savePreferences } from '../utils/preferences';
@@ -383,7 +383,11 @@ function RouteTimeline({
             aria-label={isPaused ? 'Resume animation' : 'Pause animation'}
             className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-white/18 bg-black/18 text-white transition-colors hover:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isPaused ? (
+            {currentStep >= totalSteps ? (
+              <svg className="h-6 w-6 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m4 12.5 5 5L20 6.5" />
+              </svg>
+            ) : isPaused ? (
               <svg className="ml-0.5 h-6 w-6 text-[#54F6BA]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M8 5v14l11-7L8 5Z" />
               </svg>
@@ -727,38 +731,35 @@ function MapView({
   );
 
   return (
-    <main
-      className="relative min-h-screen overflow-hidden bg-[#02080B] text-white [touch-action:none]"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen items-center justify-center bg-[#02080B]">
-            <div className="flex flex-col items-center gap-4 text-white/70">
-              <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/15 border-t-[#54F6BA]" />
-              <p className="text-sm">Loading 3D scene…</p>
+    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
+      <div className="absolute inset-0 [touch-action:none]" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        <Suspense
+          fallback={
+            <div className="flex min-h-screen items-center justify-center bg-[#02080B]">
+              <div className="flex flex-col items-center gap-4 text-white/70">
+                <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/15 border-t-[#54F6BA]" />
+                <p className="text-sm">Loading 3D scene…</p>
+              </div>
             </div>
-          </div>
-        }
-      >
-        <RouteScene3D
-          nodes={CAMPUS_NODES}
-          edges={CAMPUS_EDGES}
-          activePath={routePath}
-          avoidNodes={avoidNodes}
-          stepIndex={sceneStepIndex}
-          zoomLevel={zoomLevel}
-          isThreeDimensional={isThreeDimensional}
-          variant="background"
-          showHud={false}
-          traceState={traceState}
-          traceEndpoints={traceEndpointPair}
-          showWeightLabels={showEdgeWeights}
-          onNodeClick={onNodeClick}
-        />
-      </Suspense>
+          }
+        >
+          <RouteScene3D
+            nodes={CAMPUS_NODES}
+            edges={edges}
+            activePath={routePath}
+            avoidNodes={avoidNodes}
+            stepIndex={sceneStepIndex}
+            zoomLevel={zoomLevel}
+            isThreeDimensional={isThreeDimensional}
+            variant="background"
+            showHud={false}
+            traceState={traceState}
+            traceEndpoints={traceEndpointPair}
+            showWeightLabels={showEdgeWeights}
+            onNodeClick={onNodeClick}
+          />
+        </Suspense>
+      </div>
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(2,8,11,0.34)_0%,rgba(2,8,11,0.06)_42%,rgba(2,8,11,0.03)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[270px] bg-[linear-gradient(180deg,transparent,rgba(1,7,10,0.78)_46%,rgba(1,7,10,0.94)_100%)]" />
@@ -941,7 +942,7 @@ function ControlPanel({
   const directions = useMemo(() => buildDirections(routePath, edges), [routePath, edges]);
 
   return (
-    <section className="pointer-events-auto absolute left-3 top-[calc(1.75rem+env(safe-area-inset-top))] z-40 w-[calc(100vw-1.5rem)] max-w-[388px] rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
+    <section className="pointer-events-auto absolute left-3 top-[calc(1.75rem+env(safe-area-inset-top))] z-40 max-h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] w-[calc(100vw-1.5rem)] max-w-[388px] overflow-y-auto overscroll-contain rounded-lg border border-white/16 bg-[#071116]/84 p-5 shadow-2xl shadow-black/45 backdrop-blur-xl sm:p-6 md:max-w-[430px]">
       <button
         type="button"
         onClick={onMinimize}
@@ -1068,6 +1069,9 @@ function ControlPanel({
               <div className="mt-2 rounded-md border border-white/10 bg-black/22 px-3 py-2.5">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
                   Nodes expanded
+                </span>
+                <span className="mt-0.5 block text-[10px] text-white/35">
+                  Bi-Dijkstra counts both frontiers combined.
                 </span>
                 <div className="mt-1.5 flex flex-col gap-1">
                   {algorithmStats.map((stat) => (
@@ -1242,7 +1246,7 @@ function ControlPanel({
                   <span className="font-medium text-white">
                     {getNodeLabel(leg.from)} → {getNodeLabel(leg.to)}
                   </span>{' '}
-                  · {leg.distance} unit{leg.distance === 1 ? '' : 's'} · {Math.round(leg.cumulativeDistance * 10) / 10} total
+                  · {Math.round(leg.distance * 10) / 10} unit{leg.distance === 1 ? '' : 's'} · {Math.round(leg.cumulativeDistance * 10) / 10} units total
                 </span>
               </li>
             ))}
@@ -1385,7 +1389,7 @@ function ControlPanel({
       <button
         type="button"
         onClick={onExportGpx}
-        disabled={!canAnimate}
+        disabled={!canAnimate || routePath.length === 0}
         className="mt-3 flex h-12 w-full items-center justify-center gap-3 rounded-md border border-white/18 bg-black/18 px-5 text-sm font-semibold text-white transition-colors hover:border-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-[#54F6BA]/70 disabled:cursor-not-allowed disabled:opacity-45"
       >
         <svg className="h-5 w-5 text-[#54F6BA]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1504,6 +1508,16 @@ export function Dashboard() {
       next.timeOfDay = requestedTimeOfDay;
     }
 
+    const requestedViewMode = params.get('viewMode');
+    if (requestedViewMode === 'dijkstra' || requestedViewMode === 'path') {
+      next.viewMode = requestedViewMode;
+    }
+
+    const requestedShowEdgeWeights = params.get('showEdgeWeights');
+    if (requestedShowEdgeWeights === 'true' || requestedShowEdgeWeights === 'false') {
+      next.showEdgeWeights = requestedShowEdgeWeights === 'true';
+    }
+
     return next;
   });
   const { viewMode, showEdgeWeights, speedMs: routeStepMs, softAvoidance, accessibleOnly, algorithm, timeOfDay } = preferences;
@@ -1518,7 +1532,7 @@ export function Dashboard() {
 
   const effectiveEdges = useMemo(() => applyTimeOfDayEdges(CAMPUS_EDGES, timeOfDay), [timeOfDay]);
 
-  const routeCandidates = useMemo(() => {
+  const routeCandidates = useMemo<Array<AlternativeRoute & { error?: string }>>(() => {
     const softAvoidanceConfig = softAvoidance ? { penalty: DEFAULT_SOFT_PENALTY } : undefined;
     const search: SearchFunction =
       algorithm === 'astar' ? astarShortestPath : algorithm === 'bidirectional' ? bidirectionalShortestPath : dijkstraShortestPath;
@@ -1536,7 +1550,11 @@ export function Dashboard() {
         search
       );
 
-      return result.error ? [] : [{ path: result.path, distance: result.distance }];
+      if (result.error) {
+        return [{ path: [], distance: Number.POSITIVE_INFINITY, error: result.error }];
+      }
+
+      return [{ path: result.path, distance: result.distance }];
     }
 
     return kShortestPaths(CAMPUS_NODES, effectiveEdges, currentOrigin, currentDestination, avoidNodes, 3, softAvoidanceConfig, accessibleOnly, search);
@@ -1601,6 +1619,8 @@ export function Dashboard() {
 
     url.searchParams.set('timeOfDay', timeOfDay);
     url.searchParams.set('speed', String(routeStepMs));
+    url.searchParams.set('viewMode', viewMode);
+    url.searchParams.set('showEdgeWeights', String(showEdgeWeights));
 
     url.searchParams.delete('panel');
     if (isPanelMinimized) {
@@ -1608,7 +1628,7 @@ export function Dashboard() {
     }
 
     window.history.replaceState(null, '', url.toString());
-  }, [accessibleOnly, algorithm, avoidNodes, currentDestination, currentOrigin, isPanelMinimized, routeStepMs, softAvoidance, timeOfDay, waypoints]);
+  }, [accessibleOnly, algorithm, avoidNodes, currentDestination, currentOrigin, isPanelMinimized, routeStepMs, showEdgeWeights, softAvoidance, timeOfDay, viewMode, waypoints]);
 
   const safeRouteIndex = Math.min(selectedRouteIndex, Math.max(routeCandidates.length - 1, 0));
   const routeResult: RoutingResult = useMemo(
@@ -1709,7 +1729,15 @@ export function Dashboard() {
   const effectiveCanAnimate = isDijkstraMode
     ? !traceResult.error && traceResult.steps.length > 1
     : canAnimate;
-  const effectiveRouteError = isDijkstraMode ? (traceResult.error ?? null) : routeError;
+  const effectiveRouteError = (() => {
+    const baseError = isDijkstraMode ? (traceResult.error ?? null) : routeError;
+
+    if (baseError === UNREACHABLE_ERROR && timeOfDay === 'night' && accessibleOnly) {
+      return `${baseError} At night the cafeteria corridor is closed, and the only remaining link to the library requires stairs — try switching accessible-only off or picking off-peak.`;
+    }
+
+    return baseError;
+  })();
 
   const stepLog = useMemo(() => {
     if (!isDijkstraMode) {
@@ -1719,7 +1747,7 @@ export function Dashboard() {
     return traceResult.steps.slice(0, traceCurrentIndex + 1).map(describeTraceStep);
   }, [isDijkstraMode, traceCurrentIndex, traceResult]);
 
-  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${totalSteps}|${safeRouteIndex}|${viewMode}|${traceTotalSteps}`;
+  const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${traceResult.path.join(',')}|${safeRouteIndex}|${viewMode}`;
 
   useEffect(() => {
     savePreferences(preferences);
@@ -1774,13 +1802,22 @@ export function Dashboard() {
         target.isContentEditable ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.tagName === 'BUTTON'
+        target.tagName === 'SELECT'
       );
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return;
+      }
+
+      if (event.key === ' ') {
+        if (event.target instanceof HTMLElement && event.target.tagName === 'BUTTON') {
+          return;
+        }
+
+        event.preventDefault();
+        handleTogglePause();
         return;
       }
 
@@ -1842,7 +1879,7 @@ export function Dashboard() {
 
     const submitState = latestStateRef.current;
 
-    const parsed = await parseNavigationRequest(query, {
+    const { result: parsed, source: parseSource } = await parseNavigationRequestWithSource(query, {
       origin: submitState.origin,
       destination: submitState.destination,
       avoid_nodes: submitState.avoidNodes,
@@ -1897,7 +1934,9 @@ export function Dashboard() {
         if (avoidedLabel) {
           summary.push(`skip ${avoidedLabel}`);
         }
-        setAiFeedback({ message: `Route set: ${summary.join(', ')}.`, tone: 'success' });
+
+        const degradedNote = parseSource === 'local' ? ' (AI unavailable — used the built-in parser.)' : '';
+        setAiFeedback({ message: `Route set: ${summary.join(', ')}.${degradedNote}`, tone: parseSource === 'local' ? 'error' : 'success' });
       } else {
         setAiFeedback({
           message: 'Could not find any campus locations in that message. Try names like "main gate" or "library".',
@@ -1948,6 +1987,8 @@ export function Dashboard() {
       accessibleOnly,
       timeOfDay,
       speedMs: routeStepMs,
+      viewMode,
+      showEdgeWeights,
     });
 
     const confirmCopy = () => {
@@ -1986,7 +2027,7 @@ export function Dashboard() {
     downloadGpx(effectiveRoutePath, CAMPUS_NODES, {
       name: `${currentOrigin} to ${currentDestination}`,
       distance: effectiveDistance,
-      filename: 'dijkstra-route.gpx',
+      filename: `dijkstra-${currentOrigin}-to-${currentDestination}.gpx`,
     });
   }
 
@@ -2030,6 +2071,7 @@ export function Dashboard() {
       return;
     }
 
+    userPausedRef.current = true;
     setTimelineStep((currentStep) => Math.max(1, currentStep - 1));
     setIsAnimationRunning(false);
   }
@@ -2039,6 +2081,7 @@ export function Dashboard() {
       return;
     }
 
+    userPausedRef.current = true;
     setTimelineStep((currentStep) => Math.min(effectiveTotalSteps, currentStep + 1));
     setIsAnimationRunning(false);
   }
@@ -2156,8 +2199,18 @@ export function Dashboard() {
     onAiPromptChange: setAiPrompt,
     onAiSubmit: handleAiSubmit,
     onStartRoute: handleStartRoute,
-    onMinimize: () => setIsPanelMinimized(true),
-    onExpand: () => setIsPanelMinimized(false),
+    onMinimize: () => {
+      setIsPanelMinimized(true);
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>('[aria-label="Open dashboard"]')?.focus();
+      }, 0);
+    },
+    onExpand: () => {
+      setIsPanelMinimized(false);
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>('[aria-label="Minimize dashboard"]')?.focus();
+      }, 0);
+    },
     onShareLink: handleShareLink,
     onExportGpx: handleExportGpx,
     onSkip: handleSkipAnimation,
