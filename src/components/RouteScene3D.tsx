@@ -686,7 +686,7 @@ export function RouteScene3D({
       );
       graphGroup.add(segment);
     }
-  }, [isRendererUnavailable, isThreeDimensional, nodes, edges, variant]);
+  }, [isRendererUnavailable, isThreeDimensional, nodes, campusEdges, variant]);
 
   useEffect(() => {
     const routeLayer = routeLayerGroupRef.current;
@@ -701,7 +701,7 @@ export function RouteScene3D({
     const visiblePath = getVisiblePath(activePath, stepIndex);
     const activeNodes = new Set(visiblePath);
 
-    for (const edge of edges) {
+    for (const edge of campusEdges ?? edges) {
       const fromNode = nodeMap.get(edge.from);
       const toNode = nodeMap.get(edge.to);
 

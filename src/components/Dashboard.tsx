@@ -630,16 +630,17 @@ interface MapViewProps {
   onToggleEdgeWeights: () => void;
   onToggleSoftAvoidance: () => void;
   onToggleAccessibleOnly: () => void;
-  onAlgorithmChange: (algorithm: Algorithm) => void;
-  onTimeOfDayChange: (timeOfDay: TimeOfDay) => void;
+  onAlgorithmChange: (nextAlgorithm: Algorithm) => void;
+  onTimeOfDayChange: (nextTimeOfDay: TimeOfDay) => void;
   onSpeedChange: (ms: number) => void;
-  onNodeClick: (nodeName: string) => void;
   onOriginChange: (value: string) => void;
   onDestinationChange: (value: string) => void;
   onSwapRoute: () => void;
-  onRouteChange: (routeIndex: number) => void;
+  onNodeClick: (nodeName: string) => void;
+  onRouteChange: (index: number) => void;
+  onTogglePause: () => void;
   onAiPromptChange: (value: string) => void;
-  onAiSubmit: () => void;
+  onAiSubmit: () => Promise<void>;
   onStartRoute: () => void;
   onMinimize: () => void;
   onExpand: () => void;
@@ -648,7 +649,6 @@ interface MapViewProps {
   onSkip: () => void;
   onStepBack: () => void;
   onStepForward: () => void;
-  onTogglePause: () => void;
   onReplay: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -657,6 +657,8 @@ interface MapViewProps {
   onTouchStart: (event: React.TouchEvent<HTMLElement>) => void;
   onTouchMove: (event: React.TouchEvent<HTMLElement>) => void;
   onTouchEnd: () => void;
+  toast: { message: string; action?: () => void; actionLabel?: string } | null;
+  setToast: (toast: { message: string; action?: () => void; actionLabel?: string } | null) => void;
 }
 
 function MapView({
@@ -701,6 +703,8 @@ function MapView({
   onTimeOfDayChange,
   onSpeedChange,
   onNodeClick,
+  toast,
+  setToast,
   onOriginChange,
   onDestinationChange,
   onSwapRoute,
@@ -731,7 +735,52 @@ function MapView({
   );
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
+    <>
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: '#071116',
+            border: '1px solid #54F6BA',
+            borderRadius: 8,
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 14,
+            color: 'white',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+          }}
+          role="alert"
+        >
+          <span>{toast.message}</span>
+          {toast.action && toast.actionLabel && (
+            <button
+              onClick={() => {
+                toast.action?.();
+                setToast(null);
+              }}
+              style={{
+                background: 'linear-gradient(135deg, #00FF9D 0%, #35E9A8 100%)',
+                color: '#031610',
+                border: 'none',
+                borderRadius: 6,
+                padding: '6px 12px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {toast.actionLabel}
+            </button>
+          )}
+        </div>
+      )}
+      <main className="relative min-h-screen overflow-hidden bg-[#02080B] text-white">
       <div className="absolute inset-0 [touch-action:none]" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <Suspense
           fallback={
@@ -858,7 +907,8 @@ function MapView({
         canControl={canAnimate}
       />
     </main>
-  );
+  </>
+);
 }
 
 interface ControlPanelProps {
@@ -1237,20 +1287,26 @@ function ControlPanel({
             Turn-by-turn directions
           </summary>
           <ol className="mt-3 space-y-2 text-sm leading-6 text-white/78">
-            {directions.map((leg) => (
-              <li key={leg.index} className="flex items-start gap-2">
-                <span
-                  className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: THEME.primaryAccent }}
-                />
-                <span>
-                  <span className="font-medium text-white">
-                    {getNodeLabel(leg.from)} → {getNodeLabel(leg.to)}
-                  </span>{' '}
-                  · {Math.round(leg.distance * 10) / 10} unit{leg.distance === 1 ? '' : 's'} · {Math.round(leg.cumulativeDistance * 10) / 10} units total
-                </span>
-              </li>
-            ))}
+            {directions.map((leg, idx) => {
+                const legDist = Math.round(leg.distance * 10) / 10;
+                const cumulativeRounded = directions
+                  .slice(0, idx + 1)
+                  .reduce((sum, l) => sum + Math.round(l.distance * 10) / 10, 0);
+                return (
+                  <li key={leg.index} className="flex items-start gap-2">
+                    <span
+                      className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: THEME.primaryAccent }}
+                    />
+                    <span>
+                      <span className="font-medium text-white">
+                        {getNodeLabel(leg.from)} → {getNodeLabel(leg.to)}
+                      </span>{' '}
+                      · {legDist} unit{legDist === 1 ? '' : 's'} · {cumulativeRounded} units total
+                    </span>
+                  </li>
+                );
+              })}
           </ol>
         </details>
       ) : null}
@@ -1432,7 +1488,7 @@ function MinimizedPanelButton({ origin, destination, onExpand }: MinimizedPanelB
       type="button"
       onClick={onExpand}
       className="pointer-events-auto absolute left-4 top-[calc(1.5rem+env(safe-area-inset-top))] z-40 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg border border-white/16 bg-[#071116]/84 px-4 py-3 text-left shadow-2xl shadow-black/45 backdrop-blur-xl transition-colors hover:border-emerald-300/40 md:left-6"
-      aria-label="Open dashboard"
+aria-label="Open route planner"
     >
       <NetworkLogo className="h-9 w-9" />
       <span className="min-w-0">
@@ -1494,6 +1550,7 @@ export function Dashboard() {
   const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [isShareCopied, setIsShareCopied] = useState(false);
+  const [toast, setToast] = useState<{ message: string; action?: () => void; actionLabel?: string } | null>(null);
   const [preferences, setPreferences] = useState(() => {
     const loaded = loadPreferences();
 
@@ -1772,6 +1829,18 @@ export function Dashboard() {
   }, [isDijkstraMode, traceCurrentIndex, traceResult]);
 
   const routeSignature = `${currentOrigin}|${currentDestination}|${calculatedRoutePath.join(',')}|${traceResult.path.join(',')}|${safeRouteIndex}|${viewMode}`;
+
+  useEffect(() => {
+    if (effectiveRouteError === UNREACHABLE_ERROR && timeOfDay === 'night' && accessibleOnly) {
+      setToast({
+        message: 'Night + accessible-only disconnects the campus. Disable accessible-only to find a route?',
+        action: () => setPreferences((p) => ({ ...p, accessibleOnly: false })),
+        actionLabel: 'Disable accessible-only',
+      });
+    } else {
+      setToast(null);
+    }
+  }, [effectiveRouteError, timeOfDay, accessibleOnly]);
 
   useEffect(() => {
     savePreferences(preferences);
@@ -2133,6 +2202,13 @@ export function Dashboard() {
       return;
     }
 
+    const stage = event.currentTarget;
+    const t1 = event.touches[0].target as Node;
+    const t2 = event.touches[1].target as Node;
+    if (!stage.contains(t1) || !stage.contains(t2)) {
+      return;
+    }
+
     const [first, second] = Array.from(event.touches);
 
     pinchGestureRef.current = {
@@ -2256,6 +2332,8 @@ export function Dashboard() {
     onTouchStart: handleTouchStart,
     onTouchMove: handleTouchMove,
     onTouchEnd: handleTouchEnd,
+    toast,
+    setToast,
   };
 
   return <MapView {...mapViewProps} />;
