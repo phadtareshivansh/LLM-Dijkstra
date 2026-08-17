@@ -23,7 +23,7 @@ describe('buildGpx', () => {
     expect(gpx).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(gpx).toContain('<gpx version="1.1"');
     expect(gpx).toContain('<wpt lat="19.0768" lon="72.8794"><name>Main_Gate</name></wpt>');
-    expect(gpx).toContain('<trkpt lat="19.0771" lon="72.8787"><name>Science_Lab</name></trkpt>');
+    expect(gpx).toContain('<trkpt lat="19.0771" lon="72.8787"><name>Science_Lab</name><ele>34</ele></trkpt>');
     expect(gpx).toContain('<trk><name>');
     expect(gpx).toContain('</trkseg></trk></gpx>');
   });

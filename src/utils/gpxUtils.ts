@@ -1,4 +1,5 @@
 import { Node } from '../data/themeConstants';
+import { buildElevationProfile } from './elevationUtils';
 
 const GRID_ORIGIN_LAT = 19.076;
 const GRID_ORIGIN_LON = 72.8777;
@@ -30,12 +31,16 @@ export function buildGpx(
     })
     .join('');
 
+  const elevationProfile = buildElevationProfile(routePath, nodes);
+  const elevationByNode = new Map(elevationProfile.map(({ node, elevation }) => [node, elevation]));
+
   const tracks = routePath
     .map((name) => nodeLookup.get(name))
     .filter((node): node is Node => Boolean(node))
     .map((node) => {
       const { lat, lon } = gridToLatLon(node);
-      return `<trkpt lat="${lat}" lon="${lon}"><name>${escapeXml(node.name)}</name></trkpt>`;
+      const elevation = elevationByNode.get(node.name);
+      return `<trkpt lat="${lat}" lon="${lon}"><name>${escapeXml(node.name)}</name>${elevation !== undefined ? `<ele>${elevation}</ele>` : ''}</trkpt>`;
     })
     .join('');
 
